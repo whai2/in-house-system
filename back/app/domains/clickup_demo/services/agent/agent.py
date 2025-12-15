@@ -84,9 +84,24 @@ class ClickUpAgent:
         if self.chat_handler:
             await self.chat_handler.ensure_session_exists(conversation_id)
 
-        # 초기 상태 설정
+        # 이전 대화 상태 로드
+        # recursion_limit: ReAct 패턴에서 max_iterations * 4 (REASON+ACT+OBSERVE+FINALIZE) + 여유분
+        config = {
+            "configurable": {"thread_id": conversation_id},
+            "recursion_limit": self.max_iterations * 4 + 10,
+        }
+        previous_state = await self.graph.aget_state(config)
+
+        # 이전 메시지에 새 메시지 추가
+        if previous_state and previous_state.values:
+            messages = previous_state.values.get("messages", [])
+            messages.append(HumanMessage(content=user_message))
+        else:
+            messages = [HumanMessage(content=user_message)]
+
+        # 초기 상태 설정 (이전 메시지 포함)
         initial_state: ClickUpState = {
-            "messages": [HumanMessage(content=user_message)],
+            "messages": messages,
             "node_sequence": [],
             "execution_logs": [],
             "max_iterations": self.max_iterations,
@@ -98,7 +113,6 @@ class ClickUpAgent:
         }
 
         # 그래프 실행
-        config = {"configurable": {"thread_id": conversation_id}}
         final_state = await self.graph.ainvoke(initial_state, config)
 
         # 최종 응답 추출
@@ -155,9 +169,24 @@ class ClickUpAgent:
         if self.chat_handler:
             await self.chat_handler.ensure_session_exists(conversation_id)
 
+        # 이전 대화 상태 로드
+        # recursion_limit: ReAct 패턴에서 max_iterations * 4 (REASON+ACT+OBSERVE+FINALIZE) + 여유분
+        config = {
+            "configurable": {"thread_id": conversation_id},
+            "recursion_limit": self.max_iterations * 4 + 10,
+        }
+        previous_state = await self.graph.aget_state(config)
+
+        # 이전 메시지에 새 메시지 추가
+        if previous_state and previous_state.values:
+            messages = previous_state.values.get("messages", [])
+            messages.append(HumanMessage(content=user_message))
+        else:
+            messages = [HumanMessage(content=user_message)]
+
+        # 초기 상태 설정 (이전 메시지 포함)
         initial_state: ClickUpState = {
-            # ... (초기 상태 정의는 그대로 유지) ...
-            "messages": [HumanMessage(content=user_message)],
+            "messages": messages,
             "node_sequence": [],
             "execution_logs": [],
             "max_iterations": self.max_iterations,
@@ -167,8 +196,6 @@ class ClickUpAgent:
             "is_final_answer": False,
             "processed_tools": [],
         }
-
-        config = {"configurable": {"thread_id": conversation_id}}
 
         # astream_events를 사용하여 모든 이벤트 캡처 (LLM 토큰 포함)
         # version="v2"를 사용하면 더 세밀한 이벤트 제어 가능

@@ -126,16 +126,29 @@ class ChatHandler:
             str: 생성된 채팅 문서 ID
         """
         # 도구 실행 상세 정보 변환
+        # tool_details는 이미 dict 리스트 형태로 전달됨 (create_tool_details에서 .to_dict() 호출)
         tool_details_data = []
         for tool_detail in tool_details:
-            tool_details_data.append({
-                "tool_name": tool_detail.tool_name,
-                "args": tool_detail.args,
-                "success": tool_detail.success,
-                "result_summary": tool_detail.result_summary,
-                "error": tool_detail.error,
-                "iteration": tool_detail.iteration,
-            })
+            # dict인 경우와 객체인 경우 모두 처리
+            if isinstance(tool_detail, dict):
+                tool_details_data.append({
+                    "tool_name": tool_detail.get("tool_name", ""),
+                    "args": tool_detail.get("args", {}),
+                    "success": tool_detail.get("success", False),
+                    "result_summary": tool_detail.get("result_summary"),
+                    "error": tool_detail.get("error"),
+                    "iteration": tool_detail.get("iteration", 0),
+                })
+            else:
+                # 객체인 경우 (하위 호환성)
+                tool_details_data.append({
+                    "tool_name": tool_detail.tool_name,
+                    "args": tool_detail.args,
+                    "success": tool_detail.success,
+                    "result_summary": tool_detail.result_summary,
+                    "error": tool_detail.error,
+                    "iteration": tool_detail.iteration,
+                })
 
         # 도구 사용 통계
         tool_names = [td["tool_name"] for td in tool_details_data]

@@ -11,6 +11,7 @@ from app.domains.clickup_demo.models.state import ClickUpState
 from app.domains.clickup_demo.services.agent.constants import NodeNames, EdgeDecision
 from app.domains.clickup_demo.services.agent.prompts import get_system_prompt
 from app.domains.clickup_demo.services.agent.result_summarizer import summarize_tool_result
+from app.domains.clickup_demo.services.agent.tool_result_processor import extract_clickup_ids
 
 
 class ClickUpGraphBuilder:
@@ -69,6 +70,12 @@ class ClickUpGraphBuilder:
 
         return workflow.compile(
             checkpointer=self.memory_saver,
+            # max_iterations를 고려한 recursion_limit 설정
+            # ReAct 패턴: REASON → ACT → OBSERVE → REASON (3 steps per iteration)
+            # max_iterations * 3 + safety margin
+            interrupt_before=None,
+            interrupt_after=None,
+            debug=False,
         )
 
     async def _reason_node(self, state: ClickUpState) -> ClickUpState:
@@ -191,6 +198,10 @@ class ClickUpGraphBuilder:
                     try:
                         result = await tool_instance.ainvoke(tool_args)
 
+                        # 결과 후처리: lc_ prefix 제거 및 ID 추출
+                        if result is not None:
+                            result = extract_clickup_ids(result)
+
                         # 결과가 None이거나 빈 값인 경우 에러로 처리
                         if result is None:
                             tool_results.append(
@@ -226,6 +237,10 @@ class ClickUpGraphBuilder:
                                     for retry_tool in self.tools:
                                         if retry_tool.name == tool_name:
                                             result = await retry_tool.ainvoke(tool_args)
+
+                                            # 결과 후처리: lc_ prefix 제거 및 ID 추출
+                                            if result is not None:
+                                                result = extract_clickup_ids(result)
 
                                             # 재시도 성공
                                             if result is None:
@@ -265,12 +280,16 @@ class ClickUpGraphBuilder:
                                     }
                                 )
                         else:
-                            # 다른 예외는 기존 로직으로 처리
-                            error_msg = (
-                                str(e)
-                                if str(e)
-                                else f"도구 '{tool_name}' 실행 중 알 수 없는 오류가 발생했습니다."
-                            )
+                            # RuntimeError: output schema 에러 특별 처리
+                            if "output schema" in str(e) or "structured content" in str(e):
+                                error_msg = f"도구 '{tool_name}'가 빈 결과를 반환했거나 조회할 항목이 없습니다. 이 리소스(Space/Folder)에는 하위 항목이 없을 수 있습니다."
+                            else:
+                                # 다른 예외는 기존 로직으로 처리
+                                error_msg = (
+                                    str(e)
+                                    if str(e)
+                                    else f"도구 '{tool_name}' 실행 중 알 수 없는 오류가 발생했습니다."
+                                )
                             error_type = type(e).__name__
                             tool_results.append(
                                 {
@@ -316,27 +335,28 @@ class ClickUpGraphBuilder:
         """
         state["node_sequence"].append(NodeNames.OBSERVE)
 
-        # 마지막 AIMessage의 tool_calls에서 유효한 tool_call_id 목록 가져오기
-        last_ai_message = None
-        valid_tool_call_ids = set()
+        # 이미 ToolMessage가 생성된 tool_call_id 목록
+        existing_tool_message_ids = set()
+        for msg in state["messages"]:
+            if isinstance(msg, ToolMessage):
+                existing_tool_message_ids.add(msg.tool_call_id)
 
-        # 메시지를 역순으로 검색하여 가장 최근의 AIMessage 찾기
+        # 가장 최근 AIMessage에서 tool_calls 찾기
+        # (현재 실행 사이클에서 생성된 tool_calls)
+        current_tool_call_ids = set()
         for msg in reversed(state["messages"]):
-            if (
-                isinstance(msg, AIMessage)
-                and hasattr(msg, "tool_calls")
-                and msg.tool_calls
-            ):
-                last_ai_message = msg
-                # tool_calls에서 모든 id 추출
+            if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tool_call in msg.tool_calls:
                     if isinstance(tool_call, dict):
                         tool_call_id = tool_call.get("id", "")
                     else:
                         tool_call_id = getattr(tool_call, "id", "")
                     if tool_call_id:
-                        valid_tool_call_ids.add(tool_call_id)
+                        current_tool_call_ids.add(tool_call_id)
                 break
+
+        # 아직 ToolMessage가 생성되지 않은 tool_call_id만 처리
+        valid_tool_call_ids = current_tool_call_ids - existing_tool_message_ids
 
         # 최근 도구 실행 결과 가져오기
         processed_tools = state.get("processed_tools", [])
@@ -344,26 +364,32 @@ class ClickUpGraphBuilder:
             tool for tool in state["tool_history"] if tool not in processed_tools
         ]
 
-        # 결과를 ToolMessage로 변환 (유효한 tool_call_id만)
-        for tool_result in recent_tools:
-            tool_call_id = tool_result.get("tool_call_id", "")
+        # tool_call_id를 키로 하는 딕셔너리 생성 (빠른 조회)
+        tool_results_by_id = {
+            tool.get("tool_call_id", ""): tool for tool in recent_tools
+        }
 
-            # tool_call_id가 유효한 목록에 있는지 확인
-            if not tool_call_id or tool_call_id not in valid_tool_call_ids:
-                # 유효하지 않은 tool_call_id는 건너뛰기
-                continue
+        # valid_tool_call_ids에 있는 모든 ID에 대해 반드시 ToolMessage 생성
+        for tool_call_id in valid_tool_call_ids:
+            tool_result = tool_results_by_id.get(tool_call_id)
 
-            if tool_result["success"]:
-                # 성공한 경우: 도구 결과를 요약하여 전달
-                tool_name = tool_result.get("tool", "")
-                result = tool_result.get("result")
+            if tool_result:
+                # 도구 실행 결과가 있는 경우
+                if tool_result["success"]:
+                    # 성공한 경우: 도구 결과를 요약하여 전달
+                    tool_name = tool_result.get("tool", "")
+                    result = tool_result.get("result")
+                    content = summarize_tool_result(tool_name, result)
+                else:
+                    # 실패한 경우: 에러 메시지
+                    error_msg = tool_result.get("error", "알 수 없는 오류가 발생했습니다.")
+                    content = f"도구 실행 실패: {error_msg}\n\n도구: {tool_result.get('tool', 'unknown')}\n인자: {tool_result.get('args', {})}"
 
-                # 결과 요약 (ID, name 등 중요 정보만 추출)
-                content = summarize_tool_result(tool_name, result)
+                # 처리된 도구로 표시
+                processed_tools.append(tool_result)
             else:
-                # 실패한 경우: 에러 메시지 (더 상세하게)
-                error_msg = tool_result.get("error", "알 수 없는 오류가 발생했습니다.")
-                content = f"도구 실행 실패: {error_msg}\n\n도구: {tool_result.get('tool', 'unknown')}\n인자: {tool_result.get('args', {})}"
+                # 도구 실행 결과가 없는 경우 (ACT 노드에서 실행 실패)
+                content = f"도구를 실행하지 못했습니다. tool_call_id: {tool_call_id}"
 
             # ToolMessage 생성 (tool_call_id 필수)
             tool_message = ToolMessage(
@@ -371,9 +397,6 @@ class ClickUpGraphBuilder:
                 tool_call_id=tool_call_id,
             )
             state["messages"].append(tool_message)
-
-            # 처리된 도구로 표시
-            processed_tools.append(tool_result)
 
         # 처리된 도구 목록 업데이트
         state["processed_tools"] = processed_tools

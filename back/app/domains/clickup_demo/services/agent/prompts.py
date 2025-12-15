@@ -43,6 +43,22 @@ def get_system_prompt(team_id: str) -> str:
 - 도구 실행이 실패하면 에러 메시지를 확인하고, 다른 방법을 시도하세요
 - 스페이스나 폴더 이름으로 검색할 때는 먼저 팀의 스페이스 목록을 조회한 후, 해당 스페이스의 ID를 사용하세요
 
+**CRITICAL - ID 형식 규칙:**
+- ClickUp Space ID는 숫자로만 구성됩니다 (예: "90123456789")
+- Team ID도 숫자로만 구성됩니다 (예: "9876543210")
+- List ID도 숫자로만 구성됩니다 (예: "901808554991")
+- "lc_"로 시작하는 ID는 LangChain 내부 ID이므로 절대 ClickUp API에 전달하지 마세요
+- Space나 Folder를 조회할 때는 반드시 실제 조회 결과에서 받은 숫자 ID를 사용하세요
+- 잘못된 ID 형식으로 인한 400 에러가 발생하면, 먼저 상위 리소스(Team → Space → Folder)를 순서대로 조회하여 올바른 숫자 ID를 얻으세요
+
+**URL에서 ID 추출하기:**
+사용자가 ClickUp URL을 제공하면 다음 패턴으로 ID를 추출하세요:
+- Task URL 예시: `https://app.clickup.com/t/TEAM_ID/TASK_ID`
+- List URL 예시: `https://app.clickup.com/TEAM_ID/v/l/6-LIST_ID-1`
+  - 여기서 `6-901808554991-1`에서 중간 숫자 `901808554991`이 List ID입니다
+- Space URL 예시: `https://app.clickup.com/TEAM_ID/v/s/SPACE_ID`
+- 숫자 부분만 추출하여 도구 호출 시 사용하세요
+
 **에러 처리:**
 - 도구 실행이 실패하면 에러 메시지를 분석하고 사용자에게 명확하게 설명하세요
 - 필요한 정보가 부족하면 먼저 조회 도구를 사용하여 정보를 수집하세요

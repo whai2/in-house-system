@@ -17,6 +17,8 @@ from app.domains.clickup_demo.services.agent.stream_events import (
     FinalEvent,
     create_tool_details,
 )
+from app.domains.clickup_demo.services.agent.langfuse_handler import LangFuseHandler
+from app.domains.clickup_demo.services.agent.tool_wrapper import CompactToolWrapper
 
 
 class ClickUpAgent:
@@ -33,6 +35,7 @@ class ClickUpAgent:
         memory_saver: MemorySaver,
         chat_handler=None,
         max_iterations: int = 10,
+        langfuse_handler: Optional[LangFuseHandler] = None,
     ):
         """
         Args:
@@ -41,12 +44,14 @@ class ClickUpAgent:
             memory_saver: LangGraph 메모리 저장소
             chat_handler: 채팅 핸들러 (선택)
             max_iterations: 최대 반복 횟수
+            langfuse_handler: LangFuse 핸들러 (선택, 추적 및 관찰성)
         """
         self.llm = llm
         self.mcp_client = mcp_client
         self.memory_saver = memory_saver
         self.chat_handler = chat_handler
         self.max_iterations = max_iterations
+        self.langfuse_handler = langfuse_handler or LangFuseHandler()
         self.tools: List[Any] = []
         self.graph: StateGraph = None
         self.graph_builder: ClickUpGraphBuilder = None
@@ -54,7 +59,12 @@ class ClickUpAgent:
     async def initialize(self):
         """에이전트 초기화: MCP 도구 로드 및 그래프 빌드"""
         # MCP 서버에서 도구 로드
-        self.tools = await self.mcp_client.get_tools()
+        raw_tools = await self.mcp_client.get_tools()
+
+        # 도구 응답 필터링 래퍼 적용 (토큰 사용량 대폭 절감)
+        # TODO: tool wrapper 수정 필요 - 현재는 비활성화
+        # self.tools = CompactToolWrapper.wrap_tools(raw_tools)
+        self.tools = raw_tools
 
         # 그래프 빌더 생성 및 그래프 빌드
         self.graph_builder = ClickUpGraphBuilder(
@@ -84,11 +94,19 @@ class ClickUpAgent:
         if self.chat_handler:
             await self.chat_handler.ensure_session_exists(conversation_id)
 
+        # LangFuse 콜백 핸들러 생성
+        langfuse_callback = self.langfuse_handler.get_callback_handler(
+            session_id=conversation_id,
+            trace_name="ClickUpAgent.chat",
+            metadata={"user_message": user_message},
+        )
+
         # 이전 대화 상태 로드
         # recursion_limit: ReAct 패턴에서 max_iterations * 4 (REASON+ACT+OBSERVE+FINALIZE) + 여유분
         config = {
             "configurable": {"thread_id": conversation_id},
             "recursion_limit": self.max_iterations * 4 + 10,
+            "callbacks": [langfuse_callback],
         }
         previous_state = await self.graph.aget_state(config)
 
@@ -147,6 +165,9 @@ class ClickUpAgent:
                 # MongoDB 저장 실패는 로그만 남기고 응답은 정상 반환
                 print(f"Failed to save chat to MongoDB: {e}")
 
+        # LangFuse 이벤트 플러시
+        self.langfuse_handler.flush()
+
         return {
             "conversation_id": conversation_id,
             "assistant_message": assistant_message,
@@ -169,11 +190,19 @@ class ClickUpAgent:
         if self.chat_handler:
             await self.chat_handler.ensure_session_exists(conversation_id)
 
+        # LangFuse 콜백 핸들러 생성
+        langfuse_callback = self.langfuse_handler.get_callback_handler(
+            session_id=conversation_id,
+            trace_name="ClickUpAgent.stream_chat",
+            metadata={"user_message": user_message},
+        )
+
         # 이전 대화 상태 로드
         # recursion_limit: ReAct 패턴에서 max_iterations * 4 (REASON+ACT+OBSERVE+FINALIZE) + 여유분
         config = {
             "configurable": {"thread_id": conversation_id},
             "recursion_limit": self.max_iterations * 4 + 10,
+            "callbacks": [langfuse_callback],
         }
         previous_state = await self.graph.aget_state(config)
 
@@ -333,3 +362,6 @@ class ClickUpAgent:
                 except Exception as e:
                     # MongoDB 저장 실패는 로그만 남기고 스트림에는 영향 없음
                     print(f"Failed to save chat to MongoDB: {e}")
+
+            # LangFuse 이벤트 플러시
+            self.langfuse_handler.flush()

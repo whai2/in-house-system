@@ -79,6 +79,9 @@ class ClickUpMCPClient:
             )
 
         # MCP 서버 파라미터 설정
+        # @twofeetup/clickup-mcp: 성능 최적화 및 응답 최적화가 적용된 버전
+        # - 통합된 도구로 도구 호출 횟수 감소
+        # - 응답 크기 최적화로 토큰 사용량 절감
         # 참고: npx와 dotenv가 stdout에 로그를 출력하면 MCP 클라이언트가 이를 JSONRPC 메시지로
         # 파싱하려고 시도하여 에러가 발생할 수 있습니다. 하지만 MCP 클라이언트가 이를 처리하므로
         # 실제 동작에는 지장이 없습니다. 다만 로그를 깔끔하게 유지하기 위해 출력을 억제합니다.
@@ -87,11 +90,14 @@ class ClickUpMCPClient:
             args=[
                 "-y",  # 자동으로 패키지 설치
                 "--quiet",  # npx 출력 억제 (dotenv 로그 등)
-                "@nazruden/clickup-server",
+                "@twofeetup/clickup-mcp@latest",  # 성능 최적화된 버전
             ],
             env={
-                "CLICKUP_PERSONAL_TOKEN": token,
+                # @twofeetup/clickup-mcp는 CLICKUP_API_KEY와 CLICKUP_TEAM_ID를 사용
+                "CLICKUP_API_KEY": token,
                 "CLICKUP_TEAM_ID": team_id,
+                # 하위 호환성을 위한 기존 환경변수도 포함
+                "CLICKUP_PERSONAL_TOKEN": token,
                 "LOG_LEVEL": "error",  # info 레벨의 로그가 JSONRPC 파싱을 방해할 수 있음
                 # dotenvx 관련 로그 억제 (모든 가능한 환경변수 설정)
                 "DOTENVX_QUIET": "true",

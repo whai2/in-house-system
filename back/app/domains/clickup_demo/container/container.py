@@ -7,6 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from app.domains.clickup_demo.services.agent.mcp_client import ClickUpMCPClient
 from app.domains.clickup_demo.services.agent.agent import ClickUpAgent
+from app.domains.clickup_demo.services.agent.langfuse_handler import LangFuseHandler
 from app.domains.clickup_demo.repositories import SessionRepository, ChatRepository
 from app.domains.clickup_demo.handlers import ChatHandler
 from app.common.database.mongodb import get_database
@@ -24,9 +25,11 @@ class ClickUpDemoContainer(containers.DeclarativeContainer):
     # LLM (Singleton - 재사용)
     llm = providers.Singleton(
         ChatAnthropic,
-        model="claude-opus-4-5-20251101",
+        model="claude-sonnet-4-20250514",  # Opus 4.5 대비 5배 저렴, 성능은 충분
         temperature=0.7,
         api_key=providers.Callable(lambda: os.environ.get("ANTHROPIC_API_KEY")),
+        # 프롬프트 캐싱 활성화 (반복되는 긴 컨텍스트에 대해 90% 비용 절감)
+        model_kwargs={"extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"}},
     )
 
     # ClickUp MCP Client (Singleton - MCP 서버 연결 공유)
@@ -34,6 +37,9 @@ class ClickUpDemoContainer(containers.DeclarativeContainer):
         ClickUpMCPClient,
         clickup_token=providers.Callable(lambda: os.environ.get("CLICKUP_ACCESS_TOKEN")),
     )
+
+    # LangFuse Handler (Singleton - 환경변수에서 자동으로 설정 로드)
+    langfuse_handler = providers.Singleton(LangFuseHandler)
 
     # MongoDB Database (Callable - get_database() 함수 호출)
     database = providers.Callable(get_database)
@@ -57,4 +63,5 @@ class ClickUpDemoContainer(containers.DeclarativeContainer):
         mcp_client=mcp_client,
         memory_saver=memory_saver,
         chat_handler=chat_handler,
+        langfuse_handler=langfuse_handler,
     )

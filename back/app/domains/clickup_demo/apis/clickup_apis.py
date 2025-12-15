@@ -57,13 +57,25 @@ async def clickup_chat(
     # 도구 실행 상세 정보 생성
     tool_details = []
     for idx, tool_exec in enumerate(result["tool_history"], start=1):
+        # result를 문자열로 변환 (Claude 모델은 리스트 형태로 반환할 수 있음)
+        result_value = tool_exec.get("result", "")
+        if isinstance(result_value, list):
+            # Claude 응답 포맷 처리
+            result_str = ""
+            for item in result_value:
+                if isinstance(item, dict) and "text" in item:
+                    result_str += item["text"]
+                elif isinstance(item, str):
+                    result_str += item
+            result_value = result_str
+
         tool_details.append(
             ToolExecutionDetail(
                 tool_name=tool_exec["tool"],
                 args=tool_exec["args"],
                 success=tool_exec["success"],
                 result_summary=(
-                    tool_exec.get("result", "")[:200] if tool_exec["success"] else None
+                    str(result_value)[:200] if tool_exec["success"] else None
                 ),
                 error=tool_exec.get("error") if not tool_exec["success"] else None,
                 iteration=idx,

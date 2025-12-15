@@ -1,6 +1,7 @@
 import type { ChatConversation } from "@/entities/chat";
-import { useAllSessions } from "@/entities/chat";
+import { chatKeys, SessionApi, useAllSessions } from "@/entities/chat";
 import styled from "@emotion/styled";
+import { useQueries } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ChatInterface } from "../../features/chat";
 import { theme } from "../../shared/lib/theme";
@@ -58,6 +59,7 @@ export const ChatPage = () => {
     currentConversationId,
     createConversation,
     setCurrentConversation,
+    addOrUpdateConversation,
     getCurrentConversation,
   } = useChatStore();
 
@@ -86,6 +88,61 @@ export const ChatPage = () => {
     );
   }, [localConversations, serverConversations]);
 
+  // conversations에 존재하는 각 id를 통해 useSessionChats 조회
+  const sessionApi = useMemo(() => new SessionApi(), []);
+  const sessionChatsQueries = useQueries({
+    queries: conversations.map((conversation) => ({
+      queryKey: chatKeys.sessionChats(conversation.id, { limit: 100 }),
+      queryFn: () =>
+        sessionApi.getSessionChats(conversation.id, { limit: 100 }),
+      enabled: !!conversation.id,
+    })),
+  });
+
+  // 쿼리 결과를 사용하여 conversations의 messages 채우기
+  const conversationsWithMessages = useMemo(() => {
+    return conversations.map((conversation, index) => {
+      const chatsQuery = sessionChatsQueries[index];
+      const chatsData = chatsQuery?.data;
+
+      // 로컬 대화는 기존 messages 유지
+      const isLocalConversation = localConversations.some(
+        (c) => c.id === conversation.id
+      );
+      if (isLocalConversation && conversation.messages.length > 0) {
+        return conversation;
+      }
+
+      // 서버에서 가져온 채팅 이력을 messages로 변환
+      if (chatsData?.chats) {
+        const messages = chatsData.chats.flatMap((chat) => {
+          const timestamp = new Date(chat.created_at).getTime();
+          return [
+            {
+              id: `${chat.id}-user`,
+              role: "user" as const,
+              content: chat.user_message,
+              timestamp,
+            },
+            {
+              id: `${chat.id}-assistant`,
+              role: "assistant" as const,
+              content: chat.assistant_message,
+              timestamp: timestamp + 1, // assistant는 user보다 약간 늦게
+            },
+          ];
+        });
+
+        return {
+          ...conversation,
+          messages,
+        };
+      }
+
+      return conversation;
+    });
+  }, [conversations, sessionChatsQueries, localConversations]);
+
   const currentConversation = getCurrentConversation();
 
   const handleNewConversation = () => {
@@ -94,6 +151,13 @@ export const ChatPage = () => {
   };
 
   const handleSelectConversation = (id: string) => {
+    // 선택한 세션을 chatStore에 추가/업데이트
+    const selectedConversation = conversationsWithMessages.find(
+      (conv) => conv.id === id
+    );
+    if (selectedConversation) {
+      addOrUpdateConversation(selectedConversation);
+    }
     setCurrentConversation(id);
   };
 
@@ -105,7 +169,7 @@ export const ChatPage = () => {
     <ChatContainer>
       <Sidebar isOpen={sidebarOpen}>
         <ConversationList
-          conversations={conversations}
+          conversations={conversationsWithMessages}
           currentConversationId={currentConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}

@@ -116,9 +116,15 @@ const formatTime = (timestamp: number) => {
 const getPreviewText = (conversation: ChatConversation) => {
   const lastMessage = conversation.messages[conversation.messages.length - 1];
   if (!lastMessage) return "새 대화";
-  return lastMessage.content.length > 50
-    ? `${lastMessage.content.slice(0, 50)}...`
-    : lastMessage.content;
+
+  // content를 문자열로 변환
+  const contentString = typeof lastMessage.content === 'string'
+    ? lastMessage.content
+    : (lastMessage.content.data?.text || '');
+
+  return contentString.length > 50
+    ? `${contentString.slice(0, 50)}...`
+    : contentString || "새 대화";
 };
 
 export const ConversationList = ({
@@ -136,9 +142,7 @@ export const ConversationList = ({
 
       <ConversationsContainer>
         {isLoading ? (
-          <EmptyState>
-            세션 목록을 불러오는 중...
-          </EmptyState>
+          <EmptyState>세션 목록을 불러오는 중...</EmptyState>
         ) : conversations.length === 0 ? (
           <EmptyState>
             대화가 없습니다.

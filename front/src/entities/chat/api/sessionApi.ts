@@ -99,14 +99,17 @@ export class SessionApi {
       queryString ? `?${queryString}` : ""
     }`;
 
-    console.log("url", url);
-
     const response = await fetch(url, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
     });
+
+    if (response.status === 404) {
+      // 세션이 없으면 빈 결과 반환
+      return { chats: [], total: 0 };
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -115,7 +118,8 @@ export class SessionApi {
       );
     }
 
-    return response.json();
+    const data = await response.json();
+    return data;
   }
 
   /**

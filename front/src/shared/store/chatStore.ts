@@ -13,6 +13,7 @@ interface ChatStore extends ChatState {
   // Actions
   createConversation: () => string;
   setCurrentConversation: (id: string | null) => void;
+  addOrUpdateConversation: (conversation: ChatConversation) => void;
   addMessage: (
     conversationId: string,
     message: Omit<ChatMessage, "id" | "timestamp">
@@ -66,6 +67,26 @@ export const useChatStore = create<ChatStore>()(
 
     setCurrentConversation: (id) => {
       set({ currentConversationId: id });
+    },
+
+    addOrUpdateConversation: (conversation) => {
+      set((state) => {
+        const existingIndex = state.conversations.findIndex(
+          (conv) => conv.id === conversation.id
+        );
+
+        if (existingIndex >= 0) {
+          // 기존 대화가 있으면 업데이트
+          const newConversations = [...state.conversations];
+          newConversations[existingIndex] = conversation;
+          return { conversations: newConversations };
+        } else {
+          // 새 대화 추가
+          return {
+            conversations: [conversation, ...state.conversations],
+          };
+        }
+      });
     },
 
     addMessage: (conversationId, messageData) => {
@@ -132,12 +153,7 @@ export const useChatStore = create<ChatStore>()(
     },
 
     appendMessageContent: (conversationId, messageId, content) => {
-      console.log('[chatStore] appendMessageContent:', { conversationId, messageId, content });
       set((state) => {
-        const conversation = state.conversations.find(c => c.id === conversationId);
-        const message = conversation?.messages.find(m => m.id === messageId);
-        console.log('[chatStore] Found message:', message);
-
         return {
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId

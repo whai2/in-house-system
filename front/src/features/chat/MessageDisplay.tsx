@@ -22,7 +22,6 @@ const formatTime = (timestamp: number) => {
 };
 
 export const MessageDisplay = ({ message }: MessageDisplayProps) => {
-  console.log(message);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // content를 문자열로 변환

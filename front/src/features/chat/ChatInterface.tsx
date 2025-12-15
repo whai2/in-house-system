@@ -26,13 +26,59 @@ export const ChatInterface = () => {
   const {
     data: sessionChatsData,
     isLoading: isLoadingHistory,
-    isError: isHistoryError,
   } = useSessionChats(currentConversation?.id || null, { limit: 100 });
 
-  const messages = useMemo(
+  // 세션 채팅 이력을 ChatMessage 배열로 변환
+  const sessionMessages = useMemo<ChatMessage[]>(() => {
+    if (!sessionChatsData?.chats) return [];
+
+    return sessionChatsData.chats.flatMap((chat) => {
+      const timestamp = new Date(chat.created_at).getTime();
+      let assistantContent = chat.assistant_message;
+      if (chat.tool_details && chat.tool_details.length > 0) {
+        assistantContent +=
+          "\n\n**사용된 도구**: " + chat.used_tools.join(", ");
+      }
+
+      return [
+        {
+          id: `${chat.id}-user`,
+          role: "user" as const,
+          content: chat.user_message,
+          timestamp,
+        },
+        {
+          id: `${chat.id}-assistant`,
+          role: "assistant" as const,
+          content: assistantContent,
+          timestamp: timestamp + 1,
+          isStreaming: false,
+          metadata: {
+            eventType: "final",
+            nodeName: null,
+            iteration: null,
+          },
+        },
+      ];
+    });
+  }, [sessionChatsData]);
+
+  // 스트리밍 중인 메시지 (로컬 상태에만 있는 메시지)
+  const streamingMessages = useMemo(
     () => currentConversation?.messages || [],
     [currentConversation?.messages]
   );
+
+  // 세션 메시지와 스트리밍 메시지를 병합
+  // 스트리밍 메시지는 세션 메시지보다 최신이므로 뒤에 추가
+  const messages = useMemo(() => {
+    const sessionMessageIds = new Set(sessionMessages.map((m) => m.id));
+    // 세션에 없는 메시지만 스트리밍 메시지로 추가 (새로 입력 중인 메시지)
+    const newStreamingMessages = streamingMessages.filter(
+      (m) => !sessionMessageIds.has(m.id)
+    );
+    return [...sessionMessages, ...newStreamingMessages];
+  }, [sessionMessages, streamingMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,44 +87,6 @@ export const ChatInterface = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  // 세션 채팅 이력을 메시지로 변환하여 추가
-  useEffect(() => {
-    if (
-      !currentConversation ||
-      !sessionChatsData ||
-      currentConversation.messages.length > 0
-    ) {
-      return; // 이미 메시지가 있으면 불러오지 않음
-    }
-
-    // 채팅 이력을 메시지로 변환하여 추가
-    for (const chat of sessionChatsData.chats) {
-      // 사용자 메시지 추가
-      addMessage(currentConversation.id, {
-        role: "user",
-        content: chat.user_message,
-      });
-
-      // 어시스턴트 메시지 추가
-      let assistantContent = chat.assistant_message;
-      if (chat.tool_details && chat.tool_details.length > 0) {
-        assistantContent +=
-          "\n\n**사용된 도구**: " + chat.used_tools.join(", ");
-      }
-
-      addMessage(currentConversation.id, {
-        role: "assistant",
-        content: assistantContent,
-        isStreaming: false,
-        metadata: {
-          eventType: "final",
-          nodeName: null,
-          iteration: null,
-        },
-      });
-    }
-  }, [sessionChatsData, currentConversation, addMessage]);
 
   const handleSubmit = async () => {
     if (!inputValue.trim() || !currentConversation) return;
@@ -115,26 +123,17 @@ export const ChatInterface = () => {
         // 기존 메시지의 content에 chunk 누적 또는 isStreaming 업데이트
         if (!currentConversation) return;
 
-        console.log("[ChatInterface] onMessageUpdate called:", {
-          messageId,
-          chunkContent,
-          isStreaming,
-        });
-
         // chunkContent가 있으면 누적
         if (chunkContent) {
-          console.log("[ChatInterface] Appending content:", chunkContent);
           appendMessageContent(currentConversation.id, messageId, chunkContent);
         }
 
         // isStreaming 상태 업데이트
         if (isStreaming !== undefined) {
-          console.log("[ChatInterface] Updating isStreaming:", isStreaming);
           updateMessage(currentConversation.id, messageId, { isStreaming });
         }
       },
-      onError: (error) => {
-        console.error("Stream error:", error);
+      onError: () => {
         setStatus("error");
       },
       onComplete: () => {
@@ -190,10 +189,7 @@ export const ChatInterface = () => {
     );
   }
 
-  if (isHistoryError) {
-    // 에러가 발생해도 계속 진행 (세션이 없을 수도 있음)
-    console.error("Failed to load session history");
-  }
+  // 에러가 발생해도 계속 진행 (세션이 없을 수도 있음)
 
   return (
     <>

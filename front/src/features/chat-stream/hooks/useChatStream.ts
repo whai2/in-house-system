@@ -45,12 +45,7 @@ export const useChatStream = () => {
             const nodeName = event.node_name || "default";
             const chunkContent = event.data?.text || event.content || event.data?.content || "";
 
-            console.log('[message_chunk] Event:', event);
-            console.log('[message_chunk] Node:', nodeName);
-            console.log('[message_chunk] Chunk content:', chunkContent);
-
             if (!chunkContent) {
-              console.warn('[message_chunk] No content found, skipping');
               continue;
             }
 
@@ -59,11 +54,9 @@ export const useChatStream = () => {
 
             if (activeMessageId) {
               // 기존 메시지에 누적
-              console.log('[message_chunk] Appending to active message:', activeMessageId);
               onMessageUpdate?.(activeMessageId, chunkContent);
             } else {
               // 새 메시지 생성 (node_end 이후 첫 chunk)
-              console.log('[message_chunk] Creating new message');
               const newMessage: ChatMessage = {
                 id: crypto.randomUUID(),
                 role: "assistant",
@@ -76,7 +69,6 @@ export const useChatStream = () => {
                 },
               };
               const actualMessageId = onMessage?.(newMessage);
-              console.log('[message_chunk] Created message with ID:', actualMessageId);
 
               // 활성 메시지로 등록
               if (actualMessageId) {

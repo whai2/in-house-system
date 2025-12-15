@@ -30,8 +30,8 @@ export const Avatar = styled.div<{ role: 'user' | 'assistant' }>`
 
 export const MessageBubble = styled.div<{ role: 'user' | 'assistant' }>`
   flex: 1;
-  background: ${({ role }) => (role === 'user' ? theme.colors.primary.start : theme.colors.background.light)};
-  color: ${({ role }) => (role === 'user' ? 'white' : theme.colors.text.primary)};
+  background: ${({ role }) => (role === 'user' ? '#e8e8e8' : theme.colors.background.light)};
+  color: ${({ role }) => (role === 'user' ? '#1a1a1a' : theme.colors.text.primary)};
   padding: ${theme.spacing.md} ${theme.spacing.lg};
   border-radius: ${theme.borderRadius.lg};
   border-top-left-radius: ${({ role }) => (role === 'assistant' ? '4px' : theme.borderRadius.lg)};
@@ -68,7 +68,7 @@ export const MessageBubble = styled.div<{ role: 'user' | 'assistant' }>`
   h3 { font-size: 1.1em; }
 
   code {
-    background: ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)')};
+    background: ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.05)')};
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -76,7 +76,7 @@ export const MessageBubble = styled.div<{ role: 'user' | 'assistant' }>`
   }
 
   pre {
-    background: ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)')};
+    background: ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.05)')};
     padding: ${theme.spacing.md};
     border-radius: ${theme.borderRadius.md};
     overflow-x: auto;
@@ -98,14 +98,14 @@ export const MessageBubble = styled.div<{ role: 'user' | 'assistant' }>`
   }
 
   blockquote {
-    border-left: 3px solid ${({ role }) => (role === 'user' ? 'rgba(255, 255, 255, 0.3)' : theme.colors.primary.start)};
+    border-left: 3px solid ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.2)' : theme.colors.primary.start)};
     padding-left: ${theme.spacing.md};
     margin: 0.5em 0;
     font-style: italic;
   }
 
   a {
-    color: ${({ role }) => (role === 'user' ? 'white' : theme.colors.primary.start)};
+    color: ${({ role }) => (role === 'user' ? '#0066cc' : theme.colors.primary.start)};
     text-decoration: underline;
     &:hover {
       opacity: 0.8;
@@ -119,19 +119,19 @@ export const MessageBubble = styled.div<{ role: 'user' | 'assistant' }>`
   }
 
   th, td {
-    border: 1px solid ${({ role }) => (role === 'user' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.1)')};
+    border: 1px solid ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.15)' : 'rgba(0, 0, 0, 0.1)')};
     padding: 0.5em;
     text-align: left;
   }
 
   th {
-    background: ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)')};
+    background: ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.05)')};
     font-weight: 600;
   }
 
   hr {
     border: none;
-    border-top: 1px solid ${({ role }) => (role === 'user' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.1)')};
+    border-top: 1px solid ${({ role }) => (role === 'user' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.1)')};
     margin: 1em 0;
   }
 

@@ -1,6 +1,6 @@
 """ClickUp LangGraph Agent with ReAct Pattern using MCP Server"""
 
-from typing import Dict, Any, List, AsyncGenerator
+from typing import Dict, Any, List, AsyncGenerator, Optional
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
@@ -31,6 +31,7 @@ class ClickUpAgent:
         llm: ChatOpenAI,
         mcp_client: ClickUpMCPClient,
         memory_saver: MemorySaver,
+        chat_handler=None,
         max_iterations: int = 10,
     ):
         """
@@ -38,11 +39,13 @@ class ClickUpAgent:
             llm: LangChain LLM 모델
             mcp_client: ClickUp MCP 클라이언트
             memory_saver: LangGraph 메모리 저장소
+            chat_handler: 채팅 핸들러 (선택)
             max_iterations: 최대 반복 횟수
         """
         self.llm = llm
         self.mcp_client = mcp_client
         self.memory_saver = memory_saver
+        self.chat_handler = chat_handler
         self.max_iterations = max_iterations
         self.tools: List[Any] = []
         self.graph: StateGraph = None
@@ -76,6 +79,10 @@ class ClickUpAgent:
         # 초기화 확인 및 MCP 세션 상태 확인
         if not self.graph or not self.mcp_client._initialized:
             await self.initialize()
+
+        # MongoDB 세션 생성/확인 (핸들러가 주입된 경우)
+        if self.chat_handler:
+            await self.chat_handler.ensure_session_exists(conversation_id)
 
         # 초기 상태 설정
         initial_state: ClickUpState = {
@@ -111,6 +118,21 @@ class ClickUpAgent:
         tool_names = [tool["tool"] for tool in final_state["tool_history"]]
         unique_tools = list(set(tool_names))
 
+        # MongoDB에 채팅 저장 (핸들러가 주입된 경우)
+        if self.chat_handler:
+            try:
+                await self.chat_handler.save_chat(
+                    session_id=conversation_id,
+                    user_message=user_message,
+                    assistant_message=assistant_message,
+                    node_sequence=final_state["node_sequence"],
+                    execution_logs=final_state["execution_logs"],
+                    tool_history=final_state["tool_history"],
+                )
+            except Exception as e:
+                # MongoDB 저장 실패는 로그만 남기고 응답은 정상 반환
+                print(f"Failed to save chat to MongoDB: {e}")
+
         return {
             "conversation_id": conversation_id,
             "assistant_message": assistant_message,
@@ -128,6 +150,10 @@ class ClickUpAgent:
 
         if not self.graph or not self.mcp_client._initialized:
             await self.initialize()
+
+        # MongoDB 세션 생성/확인 (핸들러가 주입된 경우)
+        if self.chat_handler:
+            await self.chat_handler.ensure_session_exists(conversation_id)
 
         initial_state: ClickUpState = {
             # ... (초기 상태 정의는 그대로 유지) ...
@@ -265,3 +291,18 @@ class ClickUpAgent:
                 tool_usage_count=len(tool_names),
             )
             yield event.to_dict()
+
+            # MongoDB에 채팅 저장 (핸들러가 주입된 경우)
+            if self.chat_handler:
+                try:
+                    await self.chat_handler.save_chat_from_stream_event(
+                        session_id=conversation_id,
+                        user_message=user_message,
+                        assistant_message=assistant_message,
+                        node_sequence=values.get("node_sequence", []),
+                        execution_logs=values.get("execution_logs", []),
+                        tool_details=tool_details,
+                    )
+                except Exception as e:
+                    # MongoDB 저장 실패는 로그만 남기고 스트림에는 영향 없음
+                    print(f"Failed to save chat to MongoDB: {e}")

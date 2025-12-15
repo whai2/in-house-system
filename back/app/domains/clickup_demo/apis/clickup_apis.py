@@ -2,7 +2,8 @@
 
 import json
 from uuid import uuid4
-from fastapi import APIRouter, Depends
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from dependency_injector.wiring import inject, Provide
 
@@ -13,6 +14,7 @@ from app.domains.clickup_demo.models.schemas import (
 )
 from app.domains.clickup_demo.services.agent.agent import ClickUpAgent
 from app.domains.clickup_demo.container.container import ClickUpDemoContainer
+from app.domains.clickup_demo.handlers.chat_handler import ChatHandler
 
 clickup_router = APIRouter()
 
@@ -46,7 +48,7 @@ async def clickup_chat(
     """
     conversation_id = request.conversation_id or str(uuid4())
 
-    # 에이전트 채팅 실행
+    # 에이전트 채팅 실행 (MongoDB 저장 로직은 agent 내부에서 처리)
     result = await agent.chat(
         user_message=request.message,
         conversation_id=conversation_id,
@@ -116,7 +118,7 @@ async def clickup_chat_stream(
     conversation_id = request.conversation_id or str(uuid4())
 
     async def generate():
-        """스트리밍 이벤트 생성"""
+        """스트리밍 이벤트 생성 (MongoDB 저장 로직은 agent 내부에서 처리)"""
         try:
             async for event in agent.stream_chat(
                 user_message=request.message,
@@ -147,3 +149,119 @@ async def clickup_chat_stream(
             "X-Accel-Buffering": "no",  # Nginx 버퍼링 비활성화
         },
     )
+
+
+@clickup_router.get("/sessions")
+async def get_all_sessions(
+    limit: int = Query(100, ge=1, le=1000, description="조회할 최대 개수"),
+    skip: int = Query(0, ge=0, description="건너뛸 개수"),
+):
+    """
+    모든 세션 목록 조회 (페이지네이션 지원)
+
+    Args:
+        limit: 조회할 최대 개수 (기본값: 100)
+        skip: 건너뛸 개수 (기본값: 0)
+
+    Returns:
+        세션 목록 및 총 개수
+    """
+    from app.domains.clickup_demo.repositories import SessionRepository
+    from app.common.database.mongodb import get_database
+
+    db = get_database()
+    session_repo = SessionRepository(db)
+    sessions = await session_repo.get_all_sessions(limit=limit, skip=skip)
+    total = await session_repo.get_session_count()
+
+    return {
+        "sessions": [
+            {
+                "session_id": session.session_id,
+                "metadata": session.metadata,
+                "created_at": (
+                    session.created_at.isoformat() if session.created_at else None
+                ),
+                "updated_at": (
+                    session.updated_at.isoformat() if session.updated_at else None
+                ),
+            }
+            for session in sessions
+        ],
+        "total": total,
+    }
+
+
+@clickup_router.get("/sessions/{session_id}")
+@inject
+async def get_session(
+    session_id: str,
+    chat_handler: ChatHandler = Depends(Provide[ClickUpDemoContainer.chat_handler]),
+):
+    """
+    세션 정보 조회
+
+    Args:
+        session_id: 세션 ID
+
+    Returns:
+        세션 정보 (존재하지 않으면 404)
+    """
+    from app.domains.clickup_demo.repositories import SessionRepository
+    from app.common.database.mongodb import get_database
+
+    db = get_database()
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "session_id": session.session_id,
+        "metadata": session.metadata,
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+    }
+
+
+@clickup_router.get("/sessions/{session_id}/chats")
+@inject
+async def get_session_chats(
+    session_id: str,
+    limit: int = Query(100, ge=1, le=1000, description="조회할 최대 개수"),
+    skip: int = Query(0, ge=0, description="건너뛸 개수"),
+    chat_handler: ChatHandler = Depends(Provide[ClickUpDemoContainer.chat_handler]),
+):
+    """
+    세션의 채팅 이력 조회
+
+    Args:
+        session_id: 세션 ID
+        limit: 조회할 최대 개수 (기본값: 100)
+        skip: 건너뛸 개수 (기본값: 0)
+
+    Returns:
+        채팅 이력 목록 및 총 개수
+    """
+    chats = await chat_handler.get_session_chats(session_id, limit=limit, skip=skip)
+    total = await chat_handler.get_session_chat_count(session_id)
+
+    return {
+        "chats": [
+            {
+                "id": str(chat.id),
+                "session_id": chat.session_id,
+                "user_message": chat.user_message,
+                "assistant_message": chat.assistant_message,
+                "node_sequence": chat.node_sequence,
+                "execution_logs": chat.execution_logs,
+                "used_tools": chat.used_tools,
+                "tool_usage_count": chat.tool_usage_count,
+                "tool_details": chat.tool_details,
+                "created_at": chat.created_at.isoformat() if chat.created_at else None,
+            }
+            for chat in chats
+        ],
+        "total": total,
+    }

@@ -67,7 +67,9 @@ class ClickUpGraphBuilder:
         workflow.add_edge(NodeNames.OBSERVE, NodeNames.REASON)
         workflow.add_edge(NodeNames.FINALIZE, END)
 
-        return workflow.compile(checkpointer=self.memory_saver)
+        return workflow.compile(
+            checkpointer=self.memory_saver,
+        )
 
     async def _reason_node(self, state: ClickUpState) -> ClickUpState:
         """추론 노드: 다음 행동을 결정 (스트리밍 지원)"""

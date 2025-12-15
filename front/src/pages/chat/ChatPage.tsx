@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import type { ChatConversation } from "@/entities/chat";
+import { useAllSessions } from "@/entities/chat";
+import styled from "@emotion/styled";
+import { useMemo, useState } from "react";
+import { ChatInterface } from "../../features/chat";
+import { theme } from "../../shared/lib/theme";
+import { useChatStore } from "../../shared/store/chatStore";
 import {
   ChatContainer,
-  Sidebar,
-  ChatMain,
-  ChatHeader,
   ChatContent,
-  ConversationList
-} from '../../shared/ui';
-import { ChatInterface } from '../../features/chat';
-import { useChatStore } from '../../shared/store/chatStore';
-import styled from '@emotion/styled';
-import { theme } from '../../shared/lib/theme';
+  ChatHeader,
+  ChatMain,
+  ConversationList,
+  Sidebar,
+} from "../../shared/ui";
 
 const ToggleButton = styled.button`
   width: 40px;
@@ -52,12 +54,37 @@ export const ChatPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const {
-    conversations,
+    conversations: localConversations,
     currentConversationId,
     createConversation,
     setCurrentConversation,
     getCurrentConversation,
   } = useChatStore();
+
+  // 서버에서 세션 목록 조회
+  const { data: sessionsResponse, isLoading: isLoadingSessions } =
+    useAllSessions();
+
+  // 세션 데이터를 ChatConversation 형태로 변환
+  const serverConversations = useMemo<ChatConversation[]>(() => {
+    if (!sessionsResponse?.sessions) return [];
+    return sessionsResponse.sessions.map((session) => ({
+      id: session.session_id,
+      title: undefined, // 세션에는 title이 없으므로 나중에 채팅 이력에서 가져올 수 있음
+      messages: [], // 채팅 이력은 별도로 로드
+      createdAt: new Date(session.created_at).getTime(),
+      updatedAt: new Date(session.updated_at).getTime(),
+    }));
+  }, [sessionsResponse]);
+
+  // 서버 세션과 로컬 대화를 병합 (로컬이 우선)
+  const conversations = useMemo(() => {
+    const localIds = new Set(localConversations.map((c) => c.id));
+    const serverOnly = serverConversations.filter((c) => !localIds.has(c.id));
+    return [...localConversations, ...serverOnly].sort(
+      (a, b) => b.updatedAt - a.updatedAt
+    );
+  }, [localConversations, serverConversations]);
 
   const currentConversation = getCurrentConversation();
 
@@ -82,6 +109,7 @@ export const ChatPage = () => {
           currentConversationId={currentConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
+          isLoading={isLoadingSessions}
         />
       </Sidebar>
 
@@ -93,9 +121,7 @@ export const ChatPage = () => {
                 <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
               </svg>
             </ToggleButton>
-            <HeaderTitle>
-              {currentConversation?.title || '새 대화'}
-            </HeaderTitle>
+            <HeaderTitle>{currentConversation?.title || "새 대화"}</HeaderTitle>
           </HeaderControls>
 
           <HeaderControls>

@@ -7,6 +7,9 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from app.domains.clickup_demo.services.agent.mcp_client import ClickUpMCPClient
 from app.domains.clickup_demo.services.agent.agent import ClickUpAgent
+from app.domains.clickup_demo.repositories import SessionRepository, ChatRepository
+from app.domains.clickup_demo.handlers import ChatHandler
+from app.common.database.mongodb import get_database
 
 
 class ClickUpDemoContainer(containers.DeclarativeContainer):
@@ -32,10 +35,26 @@ class ClickUpDemoContainer(containers.DeclarativeContainer):
         clickup_token=providers.Callable(lambda: os.environ.get("CLICKUP_ACCESS_TOKEN")),
     )
 
-    # ClickUp Agent (Singleton - MCP 세션 및 도구 재사용)
+    # MongoDB Database (Callable - get_database() 함수 호출)
+    database = providers.Callable(get_database)
+
+    # Repositories (Factory - 요청마다 새 인스턴스)
+    session_repository = providers.Factory(SessionRepository, db=database)
+
+    chat_repository = providers.Factory(ChatRepository, db=database)
+
+    # Handlers (Factory - 비즈니스 로직 처리)
+    chat_handler = providers.Factory(
+        ChatHandler,
+        session_repository=session_repository,
+        chat_repository=chat_repository,
+    )
+
+    # ClickUp Agent (Singleton - MCP 세션 및 도구 재사용, Handler 주입)
     clickup_agent = providers.Singleton(
         ClickUpAgent,
         llm=llm,
         mcp_client=mcp_client,
         memory_saver=memory_saver,
+        chat_handler=chat_handler,
     )

@@ -90,6 +90,7 @@ interface ConversationListProps {
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
+  isLoading?: boolean;
 }
 
 const formatTime = (timestamp: number) => {
@@ -125,6 +126,7 @@ export const ConversationList = ({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  isLoading = false,
 }: ConversationListProps) => {
   return (
     <ListContainer>
@@ -133,7 +135,11 @@ export const ConversationList = ({
       </ListHeader>
 
       <ConversationsContainer>
-        {conversations.length === 0 ? (
+        {isLoading ? (
+          <EmptyState>
+            세션 목록을 불러오는 중...
+          </EmptyState>
+        ) : conversations.length === 0 ? (
           <EmptyState>
             대화가 없습니다.
             <br />새 대화를 시작해보세요!

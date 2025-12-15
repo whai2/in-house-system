@@ -139,12 +139,16 @@ class ClickUpMCPClient:
         # 세션이 실제로 살아있는지 검증
         try:
             # 세션의 _closed 속성 또는 transport 상태 확인
-            if hasattr(self.session, '_closed') and self.session._closed:
+            if hasattr(self.session, "_closed") and self.session._closed:
                 # 세션이 닫혔으면 재초기화
                 await self.close()
                 await self.initialize()
             # write transport가 닫혔는지 확인
-            elif self._write and hasattr(self._write, 'is_closing') and self._write.is_closing():
+            elif (
+                self._write
+                and hasattr(self._write, "is_closing")
+                and self._write.is_closing()
+            ):
                 await self.close()
                 await self.initialize()
         except Exception:
@@ -154,21 +158,35 @@ class ClickUpMCPClient:
 
     async def close(self):
         """MCP 서버 연결 종료"""
+        if not self._initialized:
+            return
+
+        # 세션 종료
         if self.session:
             try:
-                await self.session.__aexit__(None, None, None)
-            except Exception:
+                # 세션이 이미 닫혔는지 확인
+                if hasattr(self.session, "_closed") and not self.session._closed:
+                    await self.session.__aexit__(None, None, None)
+            except (GeneratorExit, RuntimeError, Exception) as e:
+                # 종료 중 발생하는 예외는 무시 (정상적인 종료 프로세스의 일부)
                 pass
-            self.session = None
+            finally:
+                self.session = None
 
+        # Stdio 컨텍스트 종료
         if self._stdio_context:
             try:
-                await self._stdio_context.__aexit__(None, None, None)
-            except Exception:
+                # 컨텍스트가 이미 닫혔는지 확인
+                if self._read or self._write:
+                    await self._stdio_context.__aexit__(None, None, None)
+            except (GeneratorExit, RuntimeError, Exception) as e:
+                # 종료 중 발생하는 예외는 무시 (정상적인 종료 프로세스의 일부)
                 pass
-            self._stdio_context = None
-            self._read = None
-            self._write = None
+            finally:
+                self._stdio_context = None
+                self._read = None
+                self._write = None
 
+        # 상태 초기화
         self.tools = []
         self._initialized = False

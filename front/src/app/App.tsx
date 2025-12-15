@@ -1,11 +1,14 @@
-import { GlobalStyleProvider } from './providers/globalStyleProvider';
-import { ChatPage } from '@/pages/chat';
+import { ChatPage } from "@/pages/chat";
+import { GlobalStyleProvider } from "./providers/globalStyleProvider";
+import { QueryProvider } from "./providers/queryProvider";
 
 function App() {
   return (
-    <GlobalStyleProvider>
-      <ChatPage />
-    </GlobalStyleProvider>
+    <QueryProvider>
+      <GlobalStyleProvider>
+        <ChatPage />
+      </GlobalStyleProvider>
+    </QueryProvider>
   );
 }
 

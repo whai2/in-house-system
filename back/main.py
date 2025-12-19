@@ -10,6 +10,8 @@ load_dotenv(dotenv_path=env_path)
 
 from app.domains.clickup_demo.routers import clickup_demo_router
 from app.domains.clickup_demo.container.container import ClickUpDemoContainer
+from app.domains.notion_demo.routers import notion_demo_router
+from app.domains.notion_demo.container.container import NotionDemoContainer
 from app.domains.multi_agent.apis import router as multi_agent_router
 from app.domains.multi_agent.container import MultiAgentContainer
 from app.common.database.mongodb import connect_to_mongo, close_mongo_connection
@@ -21,25 +23,42 @@ async def lifespan(app: FastAPI):
     # MongoDB 연결
     await connect_to_mongo()
 
-    container = ClickUpDemoContainer()
-    app.container = container
-    container.wire(modules=["app.domains.clickup_demo.apis.clickup_apis"])
+    # ClickUp Demo Container 초기화
+    clickup_container = ClickUpDemoContainer()
+    app.clickup_container = clickup_container
+    clickup_container.wire(modules=["app.domains.clickup_demo.apis.clickup_apis"])
 
     # ClickUp Agent 초기화
-    agent = container.clickup_agent()
-    await agent.initialize()
+    clickup_agent = clickup_container.clickup_agent()
+    await clickup_agent.initialize()
+
+    # Notion Demo Container 초기화
+    notion_container = NotionDemoContainer()
+    app.notion_container = notion_container
+    notion_container.wire(modules=["app.domains.notion_demo.apis.notion_apis"])
+
+    # Notion Agent 초기화
+    notion_agent = notion_container.notion_agent()
+    await notion_agent.initialize()
 
     yield
 
     # Shutdown
-    # MCP 클라이언트 종료
+    # ClickUp MCP 클라이언트 종료
     try:
-        mcp_client = container.mcp_client()
-        if mcp_client:
-            await mcp_client.close()
+        clickup_mcp_client = clickup_container.mcp_client()
+        if clickup_mcp_client:
+            await clickup_mcp_client.close()
     except Exception as e:
-        # 종료 중 에러는 로깅만 하고 계속 진행
-        print(f"Warning: Error closing MCP client: {e}")
+        print(f"Warning: Error closing ClickUp MCP client: {e}")
+
+    # Notion MCP 클라이언트 종료
+    try:
+        notion_mcp_client = notion_container.mcp_client()
+        if notion_mcp_client:
+            await notion_mcp_client.close()
+    except Exception as e:
+        print(f"Warning: Error closing Notion MCP client: {e}")
 
     # MongoDB 연결 종료
     await close_mongo_connection()
@@ -64,6 +83,9 @@ app.add_middleware(
 
 # ClickUp Demo Router 추가
 app.include_router(clickup_demo_router, prefix="/api/v1")
+
+# Notion Demo Router 추가
+app.include_router(notion_demo_router, prefix="/api/v1")
 
 # Multi-Agent Router 추가
 app.include_router(multi_agent_router, prefix="/api/v1")

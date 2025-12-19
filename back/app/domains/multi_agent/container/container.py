@@ -1,20 +1,20 @@
-"""ClickUp Demo Dependency Injection Container"""
+"""Multi-Agent Dependency Injection Container"""
 
 import os
 from dependency_injector import containers, providers
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.domains.clickup_demo.services.agent.mcp_client import ClickUpMCPClient
-from app.domains.clickup_demo.services.agent.agent import ClickUpAgent
-from app.domains.clickup_demo.services.agent.langfuse_handler import LangFuseHandler
+from app.domains.multi_agent.services.agents.notion.mcp_client import NotionMCPClient
+from app.domains.multi_agent.services.agents.clickup.mcp_client import ClickUpMCPClient
+from app.domains.multi_agent.handlers.chat_handler import MultiAgentChatHandler
 from app.domains.clickup_demo.repositories import SessionRepository, ChatRepository
-from app.domains.clickup_demo.handlers import ChatHandler
+from app.domains.clickup_demo.services.agent.langfuse_handler import LangFuseHandler
 from app.common.database.mongodb import get_database
 
 
-class ClickUpDemoContainer(containers.DeclarativeContainer):
-    """ClickUp Demo 의존성 주입 컨테이너"""
+class MultiAgentContainer(containers.DeclarativeContainer):
+    """Multi-Agent 의존성 주입 컨테이너"""
 
     # Configuration
     config = providers.Configuration()
@@ -31,36 +31,31 @@ class ClickUpDemoContainer(containers.DeclarativeContainer):
         base_url="https://openrouter.ai/api/v1",
     )
 
-    # ClickUp MCP Client (Singleton - MCP 서버 연결 공유)
-    mcp_client = providers.Singleton(
+    # Notion MCP Client (Singleton)
+    notion_mcp_client = providers.Singleton(
+        NotionMCPClient,
+        notion_token=providers.Callable(lambda: os.environ.get("NOTION_TOKEN")),
+    )
+
+    # ClickUp MCP Client (Singleton)
+    clickup_mcp_client = providers.Singleton(
         ClickUpMCPClient,
         clickup_token=providers.Callable(lambda: os.environ.get("CLICKUP_ACCESS_TOKEN")),
     )
 
-    # LangFuse Handler (Singleton - 환경변수에서 자동으로 설정 로드)
-    langfuse_handler = providers.Singleton(LangFuseHandler)
-
-    # MongoDB Database (Callable - get_database() 함수 호출)
+    # MongoDB Database
     database = providers.Callable(get_database)
 
-    # Repositories (Factory - 요청마다 새 인스턴스)
+    # Repositories
     session_repository = providers.Factory(SessionRepository, db=database)
-
     chat_repository = providers.Factory(ChatRepository, db=database)
 
-    # Handlers (Factory - 비즈니스 로직 처리)
+    # Chat Handler
     chat_handler = providers.Factory(
-        ChatHandler,
+        MultiAgentChatHandler,
         session_repository=session_repository,
         chat_repository=chat_repository,
     )
 
-    # ClickUp Agent (Singleton - MCP 세션 및 도구 재사용, Handler 주입)
-    clickup_agent = providers.Singleton(
-        ClickUpAgent,
-        llm=llm,
-        mcp_client=mcp_client,
-        memory_saver=memory_saver,
-        chat_handler=chat_handler,
-        langfuse_handler=langfuse_handler,
-    )
+    # LangFuse Handler (Singleton - 환경변수에서 자동으로 설정 로드)
+    langfuse_handler = providers.Singleton(LangFuseHandler)

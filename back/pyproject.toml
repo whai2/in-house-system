@@ -3,7 +3,7 @@ name = "back"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4.0"
 dependencies = [
     "dependency-injector>=4.48.3",
     "fastapi>=0.124.2",
@@ -15,6 +15,7 @@ dependencies = [
     "langchain-openai>=1.1.2",
     "langfuse>=3.10.6",
     "langgraph>=1.0.4",
+    "langgraph-supervisor>=0.0.10",
     "mcp>=1.23.3",
     "motor>=3.6.0",
     "nest-asyncio>=1.6.0",

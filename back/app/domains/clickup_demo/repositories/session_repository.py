@@ -151,3 +151,44 @@ class SessionRepository:
         세션 ID에 대한 unique 인덱스 생성
         """
         await self.collection.create_index("session_id", unique=True)
+
+    async def get_sessions_by_metadata(
+        self, metadata_filter: dict, limit: int = 100, skip: int = 0
+    ) -> List[SessionDocument]:
+        """
+        메타데이터 기반 세션 목록 조회 (업데이트 시간 역순)
+
+        Args:
+            metadata_filter: 메타데이터 필터 조건 (예: {"agent_type": "multi_agent"})
+            limit: 조회할 최대 개수
+            skip: 건너뛸 개수
+
+        Returns:
+            List[SessionDocument]: 세션 문서 리스트
+        """
+        query = {f"metadata.{k}": v for k, v in metadata_filter.items()}
+        cursor = (
+            self.collection.find(query)
+            .sort("updated_at", -1)
+            .skip(skip)
+            .limit(limit)
+        )
+
+        sessions = []
+        async for doc in cursor:
+            sessions.append(SessionDocument.from_dict(doc))
+
+        return sessions
+
+    async def count_sessions_by_metadata(self, metadata_filter: dict) -> int:
+        """
+        메타데이터 기반 세션 개수 조회
+
+        Args:
+            metadata_filter: 메타데이터 필터 조건
+
+        Returns:
+            int: 세션 개수
+        """
+        query = {f"metadata.{k}": v for k, v in metadata_filter.items()}
+        return await self.collection.count_documents(query)

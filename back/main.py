@@ -10,6 +10,8 @@ load_dotenv(dotenv_path=env_path)
 
 from app.domains.clickup_demo.routers import clickup_demo_router
 from app.domains.clickup_demo.container.container import ClickUpDemoContainer
+from app.domains.multi_agent.apis import router as multi_agent_router
+from app.domains.multi_agent.container import MultiAgentContainer
 from app.common.database.mongodb import connect_to_mongo, close_mongo_connection
 
 
@@ -62,6 +64,9 @@ app.add_middleware(
 
 # ClickUp Demo Router 추가
 app.include_router(clickup_demo_router, prefix="/api/v1")
+
+# Multi-Agent Router 추가
+app.include_router(multi_agent_router, prefix="/api/v1")
 
 
 @app.get("/")

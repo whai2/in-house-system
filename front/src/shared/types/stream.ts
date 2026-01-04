@@ -1,5 +1,6 @@
 export type EventType =
   | "node_start"
+  | "tool_start"
   | "tool_result"
   | "node_end"
   | "final"

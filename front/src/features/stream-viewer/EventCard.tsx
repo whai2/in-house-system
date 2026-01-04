@@ -167,7 +167,7 @@ export const EventCard = ({ event }: EventCardProps) => {
           <EventType>{getEventTypeLabel(event.event_type)}</EventType>
           {event.node_name && <EventNode>[{event.node_name}]</EventNode>}
         </div>
-        <EventTime>{formatTime(event.timestamp)}</EventTime>
+        <EventTime>{formatTime(event.timestamp ?? Date.now() / 1000)}</EventTime>
       </EventHeader>
 
       <MessageContainer>

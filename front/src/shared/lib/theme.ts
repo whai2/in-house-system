@@ -23,6 +23,9 @@ export const theme = {
       streaming: '#4caf50',
       completed: '#2196f3',
       error: '#f44336',
+      info: '#2196f3',
+      success: '#4caf50',
+      warning: '#ff9800',
     },
     event: {
       default: '#667eea',

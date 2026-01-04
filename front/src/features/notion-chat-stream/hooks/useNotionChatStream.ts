@@ -1,11 +1,11 @@
-import type { ChatMessage } from "@/entities/chat";
+import type { NotionChatMessage } from "@/entities/notion-chat";
 import type { StreamEvent } from "@/shared/types/stream";
 import { useCallback } from "react";
-import { ChatStreamApi } from "../api/chatStreamApi";
+import { NotionChatStreamApi } from "../api/notionChatStreamApi";
 
-interface UseChatStreamOptions {
+interface UseNotionChatStreamOptions {
   onEvent?: (event: StreamEvent) => void;
-  onMessage?: (message: ChatMessage) => string; // 실제 생성된 messageId 반환
+  onMessage?: (message: NotionChatMessage) => string;
   onMessageUpdate?: (
     messageId: string,
     content: string,
@@ -15,20 +15,18 @@ interface UseChatStreamOptions {
   onComplete?: () => void;
 }
 
-export const useChatStream = () => {
+export const useNotionChatStream = () => {
   const streamChat = useCallback(
     async (
       message: string,
       conversationId: string | undefined,
-      options: UseChatStreamOptions = {}
+      options: UseNotionChatStreamOptions = {}
     ) => {
       const { onEvent, onMessage, onMessageUpdate, onError, onComplete } =
         options;
-      const streamApi = new ChatStreamApi();
+      const streamApi = new NotionChatStreamApi();
 
-      // 노드별 스트리밍 메시지 ID 추적
       const nodeMessageMap = new Map<string, string>();
-      // 현재 활성화된 message_chunk 메시지 ID (nodeName -> messageId)
       const activeChunkMessageMap = new Map<string, string>();
 
       try {
@@ -40,7 +38,6 @@ export const useChatStream = () => {
         for await (const event of streamApi.streamChat(request)) {
           onEvent?.(event);
 
-          // message_chunk 처리: node_end 전까지 같은 메시지에 누적
           if (event.event_type === "message_chunk") {
             const nodeName = event.node_name || "default";
             const chunkContent = event.data?.text || event.content || event.data?.content || "";
@@ -49,15 +46,12 @@ export const useChatStream = () => {
               continue;
             }
 
-            // 현재 활성화된 메시지가 있는지 확인
             const activeMessageId = activeChunkMessageMap.get(nodeName);
 
             if (activeMessageId) {
-              // 기존 메시지에 누적
               onMessageUpdate?.(activeMessageId, chunkContent);
             } else {
-              // 새 메시지 생성 (node_end 이후 첫 chunk)
-              const newMessage: ChatMessage = {
+              const newMessage: NotionChatMessage = {
                 id: crypto.randomUUID(),
                 role: "assistant",
                 content: chunkContent,
@@ -70,7 +64,6 @@ export const useChatStream = () => {
               };
               const actualMessageId = onMessage?.(newMessage);
 
-              // 활성 메시지로 등록
               if (actualMessageId) {
                 activeChunkMessageMap.set(nodeName, actualMessageId);
               }
@@ -78,14 +71,11 @@ export const useChatStream = () => {
             continue;
           }
 
-          // 다른 이벤트 타입 처리
           const result = convertEventToMessage(event, nodeMessageMap, activeChunkMessageMap);
           if (result) {
             if (result.type === "new") {
-              // 새 메시지 생성
               const actualMessageId = onMessage?.(result.message);
 
-              // 실제 생성된 messageId를 nodeMessageMap에 저장
               if (actualMessageId && result.message.metadata?.nodeName) {
                 nodeMessageMap.set(
                   result.message.metadata.nodeName,
@@ -93,7 +83,6 @@ export const useChatStream = () => {
                 );
               }
             } else if (result.type === "update") {
-              // 기존 메시지 업데이트
               onMessageUpdate?.(
                 result.messageId,
                 result.content,
@@ -108,8 +97,7 @@ export const useChatStream = () => {
         const err = error instanceof Error ? error : new Error(String(error));
         onError?.(err);
 
-        // 에러 메시지도 ChatMessage로 변환
-        const errorMessage: ChatMessage = {
+        const errorMessage: NotionChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
           content: `에러 발생: ${err.message}`,
@@ -128,9 +116,8 @@ export const useChatStream = () => {
   return { streamChat };
 };
 
-// 변환 결과 타입
 type ConvertResult =
-  | { type: "new"; message: ChatMessage }
+  | { type: "new"; message: NotionChatMessage }
   | {
       type: "update";
       messageId: string;
@@ -139,7 +126,6 @@ type ConvertResult =
     }
   | null;
 
-// StreamEvent를 ChatMessage로 변환하는 함수
 function convertEventToMessage(
   event: StreamEvent,
   nodeMessageMap: Map<string, string>,
@@ -150,7 +136,6 @@ function convertEventToMessage(
 
   switch (event.event_type) {
     case "final": {
-      // 최종 응답: assistant_message는 이미 chunk로 왔으므로 로그만 보고
       const data = event.data || {};
       const executionLogs = data.execution_logs || [];
       const nodeSequence = data.node_sequence || [];
@@ -182,7 +167,6 @@ function convertEventToMessage(
         }
       }
 
-      // 로그 메시지 생성 (assistant_message는 이미 chunk로 표시됨)
       return {
         type: "new",
         message: {
@@ -195,20 +179,17 @@ function convertEventToMessage(
             eventType: "final",
             nodeName: event.node_name,
             iteration: event.iteration,
-            isCollapsible: true, // 접을 수 있는 메시지로 표시
+            isCollapsible: true,
           },
         },
       };
     }
 
     case "node_start": {
-      // 노드 시작: 스트리밍 메시지 생성
-      const _nodeName = event.node_name || "알 수 없는 노드";
-      void _nodeName; // suppress unused variable warning
-      const streamingMessage: ChatMessage = {
+      const streamingMessage: NotionChatMessage = {
         id: messageId,
         role: "assistant",
-        content: "", // 빈 content로 시작, message_chunk로 채워짐
+        content: "",
         timestamp,
         isStreaming: true,
         metadata: {
@@ -218,7 +199,6 @@ function convertEventToMessage(
         },
       };
 
-      // 노드 이름으로 메시지 ID 저장
       if (event.node_name) {
         nodeMessageMap.set(event.node_name, messageId);
       }
@@ -230,7 +210,6 @@ function convertEventToMessage(
     }
 
     case "tool_result": {
-      // 도구 실행 결과 메시지
       const toolResult = formatToolResult(event.data || {});
       return {
         type: "new",
@@ -251,26 +230,23 @@ function convertEventToMessage(
 
     case "node_end":
     case "REASON_END": {
-      // 노드 완료: 현재 활성화된 chunk 메시지 종료 및 제거
       const nodeName = event.node_name || "default";
       const activeMessageId = chunkMessageMap.get(nodeName);
 
       if (activeMessageId) {
-        // 활성 메시지 목록에서 제거 (다음 message_chunk가 새 메시지를 생성하도록)
         chunkMessageMap.delete(nodeName);
 
         return {
           type: "update",
           messageId: activeMessageId,
-          content: "", // content는 변경하지 않음
-          isStreaming: false, // 스트리밍 종료
+          content: "",
+          isStreaming: false,
         };
       }
       return null;
     }
 
     case "error": {
-      // 에러 메시지
       const errorContent = event.data?.error
         ? String(event.data.error)
         : "알 수 없는 에러가 발생했습니다.";
@@ -292,7 +268,6 @@ function convertEventToMessage(
     }
 
     case "message_chunk":
-      // message_chunk는 위에서 처리됨
       return null;
 
     default:
@@ -300,18 +275,15 @@ function convertEventToMessage(
   }
 }
 
-// 도구 실행 결과 포맷팅
 function formatToolResult(data: Record<string, any>): string {
   if (!data || typeof data !== "object") {
     return "결과 없음";
   }
 
-  // 간단한 문자열이면 그대로 반환
   if (typeof data === "string") {
     return data;
   }
 
-  // JSON으로 포맷팅 (너무 길면 요약)
   try {
     const jsonString = JSON.stringify(data, null, 2);
     if (jsonString.length > 500) {

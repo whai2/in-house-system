@@ -167,6 +167,26 @@ def _summarize_created_page(result: Any) -> str:
     return summary
 
 
+def _extract_block_content(block: dict) -> str:
+    """블록에서 텍스트 내용을 추출"""
+    block_type = block.get("type", "")
+    type_data = block.get(block_type, {})
+
+    # rich_text 배열에서 텍스트 추출
+    if isinstance(type_data, dict):
+        rich_text = type_data.get("rich_text", [])
+        if rich_text:
+            texts = [rt.get("plain_text", "") for rt in rich_text if isinstance(rt, dict)]
+            return " ".join(texts).strip()
+
+        # title (child_page, child_database 등)
+        title = type_data.get("title", "")
+        if title:
+            return title
+
+    return ""
+
+
 def _summarize_blocks(result: Any) -> str:
     """블록 목록 요약"""
     if isinstance(result, dict) and "results" in result:
@@ -181,15 +201,18 @@ def _summarize_blocks(result: Any) -> str:
         if isinstance(block, dict):
             block_id = block.get("id", "")
             block_type = block.get("type", "unknown")
+            content = _extract_block_content(block)
             blocks_info.append({
                 "id": block_id,
                 "type": block_type,
+                "content": content[:100] if content else "",  # 내용 100자 제한
             })
 
     summary = f"✅ {len(blocks)}개의 블록을 찾았습니다.\n\n"
-    summary += "**블록 목록 (ID와 타입):**\n"
+    summary += "**블록 목록:**\n"
     for block in blocks_info:
-        summary += f"- ID: `{block['id']}`, 타입: {block['type']}\n"
+        content_str = f', 내용: "{block["content"]}"' if block["content"] else ""
+        summary += f"- ID: `{block['id']}`, 타입: {block['type']}{content_str}\n"
 
     if len(blocks) > 15:
         summary += f"\n... 외 {len(blocks) - 15}개 블록"

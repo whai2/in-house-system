@@ -110,29 +110,23 @@ class NotionMCPClient:
         return self.tools
 
     async def ensure_session(self):
-        """세션이 활성화되어 있는지 확인하고, 필요하면 재초기화"""
+        """세션이 활성화되어 있는지 확인하고, 필요하면 재초기화
+
+        실제로 MCP 서버와 통신을 시도하여 세션 상태를 확인합니다.
+        """
         if not self._initialized or not self.session or not self.tools:
             await self.initialize()
             return
 
-        needs_reinit = False
-
+        # 실제로 MCP 서버와 통신을 시도하여 세션이 살아있는지 확인
         try:
-            # 세션 상태 체크
-            if hasattr(self.session, "_closed") and self.session._closed:
-                needs_reinit = True
-            elif self._write and hasattr(self._write, "is_closing") and self._write.is_closing():
-                needs_reinit = True
-            elif self._read is None or self._write is None:
-                needs_reinit = True
+            # list_tools()를 호출하여 실제 통신 테스트
+            # 이 호출이 성공하면 세션이 살아있는 것
+            await self.session.list_tools()
         except Exception:
-            needs_reinit = True
-
-        if needs_reinit:
+            # 통신 실패 시 세션 재초기화
             await self.close()
             await self.initialize()
-            # 재초기화 후 도구 다시 로드
-            self.tools = await load_mcp_tools(self.session)
 
     async def close(self):
         """MCP 서버 연결 종료"""

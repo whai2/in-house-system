@@ -136,29 +136,22 @@ class ClickUpMCPClient:
         return self.tools
 
     async def ensure_session(self):
-        """세션이 활성화되어 있는지 확인하고, 필요하면 재초기화"""
+        """세션이 활성화되어 있는지 확인하고, 필요하면 재초기화
+
+        실제로 MCP 서버와 통신을 시도하여 세션 상태를 확인합니다.
+        """
         # 세션이 초기화되지 않았거나 도구가 없으면 초기화
         if not self._initialized or not self.session or not self.tools:
             await self.initialize()
             return
 
-        # 세션이 실제로 살아있는지 검증
+        # 실제로 MCP 서버와 통신을 시도하여 세션이 살아있는지 확인
         try:
-            # 세션의 _closed 속성 또는 transport 상태 확인
-            if hasattr(self.session, "_closed") and self.session._closed:
-                # 세션이 닫혔으면 재초기화
-                await self.close()
-                await self.initialize()
-            # write transport가 닫혔는지 확인
-            elif (
-                self._write
-                and hasattr(self._write, "is_closing")
-                and self._write.is_closing()
-            ):
-                await self.close()
-                await self.initialize()
+            # list_tools()를 호출하여 실제 통신 테스트
+            # 이 호출이 성공하면 세션이 살아있는 것
+            await self.session.list_tools()
         except Exception:
-            # 세션 상태 확인 중 오류가 발생하면 재초기화
+            # 통신 실패 시 세션 재초기화
             await self.close()
             await self.initialize()
 

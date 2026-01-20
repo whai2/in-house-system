@@ -22,7 +22,7 @@ const formatTime = (timestamp: number) => {
 };
 
 export const MessageDisplay = ({ message }: MessageDisplayProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // content를 문자열로 변환
   const contentString = typeof message.content === 'string'

@@ -1,4 +1,5 @@
 import { ChatPage } from "@/pages/chat";
+import { KnowledgeGraphPage } from "@/pages/knowledge-graph";
 import { MultiAgentPage } from "@/pages/multi-agent";
 import { NotionChatPage } from "@/pages/notion-chat";
 import styled from "@emotion/styled";
@@ -42,7 +43,7 @@ const PageContent = styled.div`
   overflow: hidden;
 `;
 
-type PageType = "clickup" | "notion" | "multi-agent";
+type PageType = "clickup" | "notion" | "multi-agent" | "knowledge-graph";
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>("multi-agent");
@@ -70,11 +71,18 @@ function App() {
             >
               Notion Only
             </NavTab>
+            <NavTab
+              active={currentPage === "knowledge-graph"}
+              onClick={() => setCurrentPage("knowledge-graph")}
+            >
+              Knowledge Graph
+            </NavTab>
           </NavBar>
           <PageContent>
             {currentPage === "multi-agent" && <MultiAgentPage />}
             {currentPage === "clickup" && <ChatPage />}
             {currentPage === "notion" && <NotionChatPage />}
+            {currentPage === "knowledge-graph" && <KnowledgeGraphPage />}
           </PageContent>
         </AppContainer>
       </GlobalStyleProvider>

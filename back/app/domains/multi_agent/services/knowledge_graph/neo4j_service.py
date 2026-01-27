@@ -1,7 +1,7 @@
 """Neo4j Knowledge Graph Service - Cypher 쿼리 관리"""
 
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from neo4j import AsyncDriver
 
 logger = logging.getLogger(__name__)
@@ -252,3 +252,123 @@ class Neo4jKnowledgeGraphService:
                 )
         except Exception as e:
             logger.error(f"Failed to link query chain: {e}")
+
+    # ── Read Methods ──────────────────────────────────────────────
+
+    async def get_full_graph(self) -> Dict[str, Any]:
+        """전체 그래프 데이터를 react-force-graph-2d 호환 포맷으로 반환"""
+        try:
+            async with self.driver.session() as session:
+                # 노드 조회
+                node_result = await session.run(
+                    """
+                    MATCH (n)
+                    WHERE n:Query OR n:Topic OR n:Keyword
+                          OR n:Agent OR n:Tool OR n:ToolExecution
+                    RETURN elementId(n) AS id,
+                           labels(n)[0] AS label,
+                           properties(n) AS props
+                    """
+                )
+                nodes = []
+                async for record in node_result:
+                    label = record["label"]
+                    props = dict(record["props"])
+                    # display name 설정
+                    if label == "Query":
+                        name = (props.get("text") or "")[:50]
+                    elif label == "ToolExecution":
+                        name = f"{props.get('tool_name', '')} (exec)"
+                    else:
+                        name = props.get("name", "")
+                    nodes.append({
+                        "id": record["id"],
+                        "label": label,
+                        "name": name,
+                        "properties": props,
+                    })
+
+                # 링크 조회
+                link_result = await session.run(
+                    """
+                    MATCH (a)-[r]->(b)
+                    WHERE (a:Query OR a:Topic OR a:Keyword
+                           OR a:Agent OR a:Tool OR a:ToolExecution)
+                      AND (b:Query OR b:Topic OR b:Keyword
+                           OR b:Agent OR b:Tool OR b:ToolExecution)
+                    RETURN elementId(a) AS source,
+                           elementId(b) AS target,
+                           type(r) AS relationship,
+                           properties(r) AS props
+                    """
+                )
+                links = []
+                async for record in link_result:
+                    links.append({
+                        "source": record["source"],
+                        "target": record["target"],
+                        "relationship": record["relationship"],
+                        "properties": dict(record["props"]),
+                    })
+
+                return {"nodes": nodes, "links": links}
+        except Exception as e:
+            logger.error(f"Failed to get full graph: {e}")
+            return {"nodes": [], "links": []}
+
+    async def get_node_detail(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """단일 노드 속성 + 이웃 목록 반환"""
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(
+                    """
+                    MATCH (n) WHERE elementId(n) = $node_id
+                    OPTIONAL MATCH (n)-[r]-(neighbor)
+                    RETURN labels(n)[0] AS label,
+                           properties(n) AS props,
+                           collect(DISTINCT {
+                               id: elementId(neighbor),
+                               label: labels(neighbor)[0],
+                               name: CASE
+                                   WHEN neighbor:Query THEN left(neighbor.text, 50)
+                                   WHEN neighbor:ToolExecution THEN neighbor.tool_name + ' (exec)'
+                                   ELSE neighbor.name
+                               END,
+                               relationship: type(r),
+                               direction: CASE
+                                   WHEN startNode(r) = n THEN 'outgoing'
+                                   ELSE 'incoming'
+                               END
+                           }) AS neighbors
+                    """,
+                    {"node_id": node_id},
+                )
+                record = await result.single()
+                if not record or record["label"] is None:
+                    return None
+
+                label = record["label"]
+                props = dict(record["props"])
+                if label == "Query":
+                    name = (props.get("text") or "")[:50]
+                elif label == "ToolExecution":
+                    name = f"{props.get('tool_name', '')} (exec)"
+                else:
+                    name = props.get("name", "")
+
+                # neighbor가 null인 경우 필터링
+                neighbors = [
+                    n for n in record["neighbors"]
+                    if n.get("id") is not None
+                ]
+
+                return {
+                    "id": node_id,
+                    "label": label,
+                    "name": name,
+                    "properties": props,
+                    "neighbors": neighbors,
+                }
+        except Exception as e:
+            logger.error(f"Failed to get node detail: {e}")
+            return None

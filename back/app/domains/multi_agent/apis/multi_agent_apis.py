@@ -6,7 +6,7 @@ import logging
 import time
 import traceback
 import uuid
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -617,3 +617,53 @@ async def get_session_chats(session_id: str, limit: int = 100, skip: int = 0):
         for idx, h in enumerate(history)
     ]
     return {"chats": chats, "total": len(chats)}
+
+
+# ── Knowledge Graph Read API ─────────────────────────────────────
+
+def _serialize_neo4j_value(value: Any) -> Any:
+    """Neo4j 값을 JSON 직렬화 가능한 형태로 변환"""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _serialize_neo4j_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_serialize_neo4j_value(item) for item in value]
+    return value
+
+
+def _deep_serialize(obj: Any) -> Any:
+    """중첩 구조를 재귀적으로 직렬화"""
+    if isinstance(obj, dict):
+        return {k: _deep_serialize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_serialize(item) for item in obj]
+    return _serialize_neo4j_value(obj)
+
+
+@router.get("/knowledge-graph/graph")
+async def get_knowledge_graph():
+    """전체 지식 그래프 데이터 조회 (react-force-graph-2d 호환 포맷)"""
+    try:
+        kg_service = container.knowledge_graph_service()
+        graph_data = await kg_service.get_full_graph()
+        return _deep_serialize(graph_data)
+    except Exception as e:
+        logger.error(f"Failed to get knowledge graph: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/knowledge-graph/nodes/{node_id:path}")
+async def get_knowledge_graph_node(node_id: str):
+    """노드 상세 정보 조회"""
+    try:
+        kg_service = container.knowledge_graph_service()
+        node_data = await kg_service.get_node_detail(node_id)
+        if node_data is None:
+            raise HTTPException(status_code=404, detail="Node not found")
+        return _deep_serialize(node_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get node detail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

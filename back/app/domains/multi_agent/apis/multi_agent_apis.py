@@ -1,5 +1,6 @@
 """Multi-Agent API Endpoints"""
 
+import asyncio
 import json
 import logging
 import time
@@ -12,6 +13,10 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
 from app.domains.multi_agent.container import MultiAgentContainer
+from app.domains.multi_agent.services.knowledge_graph import (
+    PreFilterResult,
+    GatekeeperVerdict,
+)
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -171,6 +176,44 @@ async def chat(request: MultiAgentChatRequest):
             user_message=request.message,
         )
 
+        # --- Knowledge Graph 사전 처리 ---
+        query_id = str(uuid.uuid4())
+        kg_service = container.knowledge_graph_service()
+        pre_filter = container.query_pre_filter()
+
+        pre_filter_result = pre_filter.should_store(request.message)
+        kg_enabled = False
+
+        if pre_filter_result == PreFilterResult.PASS:
+            try:
+                gatekeeper = container.graph_gatekeeper()
+                verdict = await gatekeeper.classify(request.message)
+
+                if verdict != GatekeeperVerdict.SKIP:
+                    kg_enabled = True
+                    await kg_service.create_query_node(
+                        query_id=query_id,
+                        text=request.message,
+                        conversation_id=conversation_id,
+                        gatekeeper_verdict=verdict.value,
+                    )
+                    await kg_service.link_query_chain(
+                        query_id=query_id,
+                        conversation_id=conversation_id,
+                    )
+
+                    if verdict == GatekeeperVerdict.STORE:
+                        extractor = container.topic_extractor()
+                        result = await extractor.extract(request.message)
+                        if result.intent:
+                            await kg_service.update_query_intent(query_id, result.intent)
+                        if result.topics:
+                            await kg_service.link_topics(query_id, result.topics)
+                        if result.keywords:
+                            await kg_service.link_keywords(query_id, result.keywords)
+            except Exception as e:
+                logger.warning(f"KG pre-processing failed in /chat: {e}")
+
         # 메시지 구성
         messages = [HumanMessage(content=request.message)]
 
@@ -195,6 +238,15 @@ async def chat(request: MultiAgentChatRequest):
 
         # 에이전트 경로 추출 (간소화)
         agent_path = ["supervisor"]
+
+        # KG: Query 완료 처리
+        if kg_enabled:
+            asyncio.create_task(
+                kg_service.complete_query(
+                    query_id=query_id,
+                    response_summary=response_text[:500] if response_text else "",
+                )
+            )
 
         # 채팅 저장
         chat_handler = container.chat_handler()
@@ -263,6 +315,60 @@ async def chat_stream(request: MultiAgentChatRequest):
             tool_results = []
             event_count = 0
 
+            # --- Knowledge Graph 사전 처리 ---
+            query_id = str(uuid.uuid4())
+            kg_service = container.knowledge_graph_service()
+            pre_filter = container.query_pre_filter()
+
+            pre_filter_result = pre_filter.should_store(request.message)
+            kg_enabled = False
+            routing_order = 0
+
+            if pre_filter_result == PreFilterResult.PASS:
+                async def _kg_pre_process():
+                    nonlocal kg_enabled
+                    try:
+                        gatekeeper = container.graph_gatekeeper()
+                        verdict = await gatekeeper.classify(request.message)
+                        logger.debug(f"KG Gatekeeper verdict: {verdict.value}")
+
+                        if verdict == GatekeeperVerdict.SKIP:
+                            return
+
+                        kg_enabled = True
+
+                        await kg_service.create_query_node(
+                            query_id=query_id,
+                            text=request.message,
+                            conversation_id=conversation_id,
+                            gatekeeper_verdict=verdict.value,
+                        )
+                        await kg_service.link_query_chain(
+                            query_id=query_id,
+                            conversation_id=conversation_id,
+                        )
+
+                        if verdict == GatekeeperVerdict.STORE:
+                            extractor = container.topic_extractor()
+                            result = await extractor.extract(request.message)
+
+                            if result.intent:
+                                await kg_service.update_query_intent(query_id, result.intent)
+                            if result.topics:
+                                await kg_service.link_topics(query_id, result.topics)
+                            if result.keywords:
+                                await kg_service.link_keywords(query_id, result.keywords)
+                    except Exception as e:
+                        logger.warning(f"KG pre-processing failed: {e}")
+
+                kg_task = asyncio.create_task(_kg_pre_process())
+
+                def _handle_kg_task_exception(task):
+                    if task.exception():
+                        logger.warning(f"KG background task failed: {task.exception()}")
+
+                kg_task.add_done_callback(_handle_kg_task_exception)
+
             logger.info("astream_events 시작...")
             async for event in app.astream_events(
                 {"messages": messages},
@@ -309,6 +415,19 @@ async def chat_stream(request: MultiAgentChatRequest):
                         iteration += 1
                         yield f"data: {json.dumps({'event_type': 'node_start', 'node_name': event_name, 'iteration': iteration, 'data': {'agent_path': agent_path}}, ensure_ascii=False)}\n\n"
 
+                        # KG: 라우팅 기록
+                        if kg_enabled:
+                            routing_order += 1
+                            _order = routing_order
+                            _agent = event_name
+                            asyncio.create_task(
+                                kg_service.record_routing(
+                                    query_id=query_id,
+                                    agent_name=_agent,
+                                    order=_order,
+                                )
+                            )
+
                 # 2. LLM 스트리밍 토큰 이벤트
                 elif kind == "on_chat_model_stream":
                     chunk_data = event.get("data", {}).get("chunk", {})
@@ -353,6 +472,25 @@ async def chat_stream(request: MultiAgentChatRequest):
                     })
                     yield f"data: {json.dumps({'event_type': 'tool_result', 'node_name': current_agent or 'agent', 'iteration': iteration, 'data': {'tool_name': tool_name, 'success': True, 'result': result_summary}}, ensure_ascii=False)}\n\n"
 
+                    # KG: Tool 실행 기록
+                    if kg_enabled:
+                        _exec_id = str(uuid.uuid4())
+                        _tool_name = tool_name
+                        _agent = current_agent or "unknown"
+                        _input = str(event.get("data", {}).get("input", ""))[:200]
+                        _output = result_summary[:200]
+                        asyncio.create_task(
+                            kg_service.record_tool_execution(
+                                query_id=query_id,
+                                execution_id=_exec_id,
+                                tool_name=_tool_name,
+                                agent_name=_agent,
+                                input_summary=_input,
+                                output_summary=_output,
+                                success=True,
+                            )
+                        )
+
                 # 5. 노드/에이전트 종료 이벤트
                 elif kind == "on_chain_end":
                     if event_name in ["supervisor", "notion_agent", "clickup_reader", "clickup_writer"]:
@@ -379,6 +517,16 @@ async def chat_stream(request: MultiAgentChatRequest):
                 "timestamp": time.time(),
             }
             yield f"data: {json.dumps(final_event, ensure_ascii=False)}\n\n"
+
+            # KG: Query 완료 처리
+            if kg_enabled:
+                _response_summary = full_response[:500] if full_response else ""
+                asyncio.create_task(
+                    kg_service.complete_query(
+                        query_id=query_id,
+                        response_summary=_response_summary,
+                    )
+                )
 
             # 채팅 저장
             logger.debug("채팅 저장 중...")

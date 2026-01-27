@@ -15,6 +15,7 @@ from app.domains.notion_demo.container.container import NotionDemoContainer
 from app.domains.multi_agent.apis import router as multi_agent_router
 from app.domains.multi_agent.container import MultiAgentContainer
 from app.common.database.mongodb import connect_to_mongo, close_mongo_connection
+from app.common.database.neo4j_db import connect_to_neo4j, close_neo4j_connection
 
 
 @asynccontextmanager
@@ -22,6 +23,9 @@ async def lifespan(app: FastAPI):
     # Startup
     # MongoDB 연결
     await connect_to_mongo()
+
+    # Neo4j 연결
+    await connect_to_neo4j()
 
     # ClickUp Demo Container 초기화
     clickup_container = ClickUpDemoContainer()
@@ -59,6 +63,9 @@ async def lifespan(app: FastAPI):
             await notion_mcp_client.close()
     except Exception as e:
         print(f"Warning: Error closing Notion MCP client: {e}")
+
+    # Neo4j 연결 종료
+    await close_neo4j_connection()
 
     # MongoDB 연결 종료
     await close_mongo_connection()

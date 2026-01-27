@@ -11,6 +11,11 @@ from app.domains.multi_agent.handlers.chat_handler import MultiAgentChatHandler
 from app.domains.clickup_demo.repositories import SessionRepository, ChatRepository
 from app.domains.clickup_demo.services.agent.langfuse_handler import LangFuseHandler
 from app.common.database.mongodb import get_database
+from app.common.database.neo4j_db import get_neo4j_driver
+from app.domains.multi_agent.services.knowledge_graph.neo4j_service import Neo4jKnowledgeGraphService
+from app.domains.multi_agent.services.knowledge_graph.query_pre_filter import QueryPreFilter
+from app.domains.multi_agent.services.knowledge_graph.graph_gatekeeper import GraphGatekeeper
+from app.domains.multi_agent.services.knowledge_graph.topic_extractor import TopicExtractor
 
 
 class MultiAgentContainer(containers.DeclarativeContainer):
@@ -59,3 +64,38 @@ class MultiAgentContainer(containers.DeclarativeContainer):
 
     # LangFuse Handler (Singleton - 환경변수에서 자동으로 설정 로드)
     langfuse_handler = providers.Singleton(LangFuseHandler)
+
+    # --- Knowledge Graph ---
+
+    # Neo4j Driver (Callable - get_database와 동일 패턴)
+    neo4j_driver = providers.Callable(get_neo4j_driver)
+
+    # Knowledge Graph Service (Factory - 요청마다 새 인스턴스)
+    knowledge_graph_service = providers.Factory(
+        Neo4jKnowledgeGraphService,
+        driver=neo4j_driver,
+    )
+
+    # KG용 경량 LLM (Singleton - gpt-4o-mini via OpenRouter)
+    kg_llm = providers.Singleton(
+        ChatOpenAI,
+        model="openai/gpt-4o-mini",
+        temperature=0.0,
+        api_key=providers.Callable(lambda: os.environ.get("OPENROUTER_API_KEY")),
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+    # Query Pre-Filter (Singleton - stateless regex)
+    query_pre_filter = providers.Singleton(QueryPreFilter)
+
+    # Graph Gatekeeper (Singleton - LLM 분류기)
+    graph_gatekeeper = providers.Singleton(
+        GraphGatekeeper,
+        llm=kg_llm,
+    )
+
+    # Topic Extractor (Singleton - LLM 토픽 추출)
+    topic_extractor = providers.Singleton(
+        TopicExtractor,
+        llm=kg_llm,
+    )

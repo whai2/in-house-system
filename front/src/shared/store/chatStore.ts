@@ -4,6 +4,7 @@ import type {
   ChatState,
   ChatStatus,
 } from "@/entities/chat";
+import { generateUUID } from "@/shared/lib/uuid";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
@@ -38,7 +39,7 @@ interface ChatStore extends ChatState {
   getConversationMessages: (id: string) => ChatMessage[];
 }
 
-const generateId = () => crypto.randomUUID();
+const generateId = () => generateUUID();
 
 export const useChatStore = create<ChatStore>()(
   subscribeWithSelector((set, get) => ({

@@ -4,6 +4,7 @@
  */
 
 import type { ChatMessage } from "@/entities/chat";
+import { generateUUID } from "@/shared/lib/uuid";
 import type { StreamEvent } from "@/shared/types/stream";
 import { useCallback } from "react";
 import { MultiAgentStreamApi } from "../api/multiAgentStreamApi";
@@ -62,7 +63,7 @@ export const useMultiAgentStream = () => {
 
               // 노드 시작 알림 메시지
               const nodeMessage: ChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: `🤖 ${getAgentDisplayName(nodeName)} 실행 중...`,
                 timestamp: Date.now(),
@@ -98,7 +99,7 @@ export const useMultiAgentStream = () => {
               } else {
                 // 새 메시지 생성
                 const newMessage: ChatMessage = {
-                  id: crypto.randomUUID(),
+                  id: generateUUID(),
                   role: "assistant",
                   content: chunkText,
                   timestamp: Date.now(),
@@ -121,7 +122,7 @@ export const useMultiAgentStream = () => {
               // 도구 호출 시작
               const toolName = event.data?.tool_name || "unknown";
               const toolMessage: ChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: `🔧 도구 호출: ${toolName}`,
                 timestamp: Date.now(),
@@ -147,7 +148,7 @@ export const useMultiAgentStream = () => {
                 : JSON.stringify(result).slice(0, 200);
 
               const toolResultMessage: ChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: success
                   ? `✅ ${toolName} 완료\n${resultSummary}${resultSummary.length >= 200 ? "..." : ""}`
@@ -202,7 +203,7 @@ export const useMultiAgentStream = () => {
               }
 
               const summaryMessage: ChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: summaryContent,
                 timestamp: Date.now(),
@@ -222,7 +223,7 @@ export const useMultiAgentStream = () => {
               // 에러
               const errorContent = event.data?.error || "알 수 없는 에러";
               const errorMessage: ChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: `❌ 에러: ${errorContent}`,
                 timestamp: Date.now(),
@@ -245,7 +246,7 @@ export const useMultiAgentStream = () => {
         onError?.(err);
 
         const errorMessage: ChatMessage = {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: "assistant",
           content: `에러 발생: ${err.message}`,
           timestamp: Date.now(),

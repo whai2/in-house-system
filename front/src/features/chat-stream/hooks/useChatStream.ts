@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@/entities/chat";
+import { generateUUID } from "@/shared/lib/uuid";
 import type { StreamEvent } from "@/shared/types/stream";
 import { useCallback } from "react";
 import { ChatStreamApi } from "../api/chatStreamApi";
@@ -58,7 +59,7 @@ export const useChatStream = () => {
             } else {
               // 새 메시지 생성 (node_end 이후 첫 chunk)
               const newMessage: ChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: chunkContent,
                 timestamp: Date.now(),
@@ -110,7 +111,7 @@ export const useChatStream = () => {
 
         // 에러 메시지도 ChatMessage로 변환
         const errorMessage: ChatMessage = {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: "assistant",
           content: `에러 발생: ${err.message}`,
           timestamp: Date.now(),
@@ -145,7 +146,7 @@ function convertEventToMessage(
   nodeMessageMap: Map<string, string>,
   chunkMessageMap: Map<string, string>
 ): ConvertResult {
-  const messageId = crypto.randomUUID();
+  const messageId = generateUUID();
   const timestamp = Date.now();
 
   switch (event.event_type) {

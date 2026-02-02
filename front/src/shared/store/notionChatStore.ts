@@ -4,6 +4,7 @@ import type {
   NotionChatState,
   NotionChatStatus,
 } from "@/entities/notion-chat";
+import { generateUUID } from "@/shared/lib/uuid";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
@@ -38,7 +39,7 @@ interface NotionChatStore extends NotionChatState {
   getConversationMessages: (id: string) => NotionChatMessage[];
 }
 
-const generateId = () => crypto.randomUUID();
+const generateId = () => generateUUID();
 
 export const useNotionChatStore = create<NotionChatStore>()(
   subscribeWithSelector((set, get) => ({

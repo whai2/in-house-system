@@ -1,4 +1,5 @@
 import type { NotionChatMessage } from "@/entities/notion-chat";
+import { generateUUID } from "@/shared/lib/uuid";
 import type { StreamEvent } from "@/shared/types/stream";
 import { useCallback } from "react";
 import { NotionChatStreamApi } from "../api/notionChatStreamApi";
@@ -52,7 +53,7 @@ export const useNotionChatStream = () => {
               onMessageUpdate?.(activeMessageId, chunkContent);
             } else {
               const newMessage: NotionChatMessage = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 role: "assistant",
                 content: chunkContent,
                 timestamp: Date.now(),
@@ -98,7 +99,7 @@ export const useNotionChatStream = () => {
         onError?.(err);
 
         const errorMessage: NotionChatMessage = {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           role: "assistant",
           content: `에러 발생: ${err.message}`,
           timestamp: Date.now(),
@@ -131,7 +132,7 @@ function convertEventToMessage(
   nodeMessageMap: Map<string, string>,
   chunkMessageMap: Map<string, string>
 ): ConvertResult {
-  const messageId = crypto.randomUUID();
+  const messageId = generateUUID();
   const timestamp = Date.now();
 
   switch (event.event_type) {

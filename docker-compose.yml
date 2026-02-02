@@ -12,6 +12,11 @@ services:
       MONGO_INITDB_DATABASE: inhouse
     volumes:
       - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   neo4j:
@@ -25,6 +30,12 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
     volumes:
       - neo4j_data:/data
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   backend:
@@ -42,8 +53,10 @@ services:
     env_file:
       - ./back/.env
     depends_on:
-      - mongodb
-      - neo4j
+      mongodb:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:

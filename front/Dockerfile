@@ -3,12 +3,12 @@ FROM node:20-alpine
 WORKDIR /app
 
 # 패키지 파일 복사
-COPY package*.json ./
+COPY package.json ./
 
-# 의존성 설치
-RUN npm ci
+# 의존성 새로 설치 (lock 파일 무시)
+RUN npm install
 
-# 소스 코드 복사
+# 소스 코드 복사 (node_modules 제외)
 COPY . .
 
 # 빌드
